@@ -165,6 +165,7 @@ REST_FRAMEWORK = {
     "DEFAULT_THROTTLE_RATES": {
         "anon_burst": "10/min",
         "user_burst": "30/min",
+        "burst": "60/min",
     },
 }
 
@@ -260,6 +261,56 @@ UNFOLD = {
                 "collapsible": False,
                 "items": [
                     {"title": "Foydalanuvchilar", "icon": "group", "link": "/admin/account/user/"},
+                ],
+            },
+            {
+                "title": "Fanlar bazasi (Catalog)",
+                "separator": True,
+                "collapsible": True,
+                "items": [
+                    {"title": "Fanlar", "icon": "menu_book", "link": "/admin/catalog/subject/"},
+                    {"title": "Mavzular", "icon": "topic", "link": "/admin/catalog/topic/"},
+                    {"title": "Savollar", "icon": "quiz", "link": "/admin/catalog/question/"},
+                ],
+            },
+            {
+                "title": "Test jarayoni (Testengine)",
+                "separator": True,
+                "collapsible": True,
+                "items": [
+                    {"title": "Test sessiyalari", "icon": "assignment", "link": "/admin/testengine/testsession/"},
+                    {"title": "Javoblar", "icon": "fact_check", "link": "/admin/testengine/answer/"},
+                    {"title": "Natijalar", "icon": "leaderboard", "link": "/admin/testengine/testresult/"},
+                ],
+            },
+            {
+                "title": "Taraqqiyot (Progress)",
+                "separator": True,
+                "collapsible": True,
+                "items": [
+                    {"title": "Takrorlash kartalari", "icon": "style", "link": "/admin/progress/reviewcard/"},
+                    {"title": "Streaklar", "icon": "local_fire_department", "link": "/admin/progress/streak/"},
+                    {"title": "XP tranzaksiyalari", "icon": "military_tech", "link": "/admin/progress/xptransaction/"},
+                ],
+            },
+            {
+                "title": "Obuna va to'lovlar (Billing)",
+                "separator": True,
+                "collapsible": True,
+                "items": [
+                    {"title": "Tarif rejalari", "icon": "sell", "link": "/admin/billing/plan/"},
+                    {"title": "Obunalar", "icon": "card_membership", "link": "/admin/billing/subscription/"},
+                    {"title": "To'lovlar", "icon": "payments", "link": "/admin/billing/payment/"},
+                ],
+            },
+            {
+                "title": "Bildirishnomalar (Notifications)",
+                "separator": True,
+                "collapsible": True,
+                "items": [
+                    {"title": "Xabarnomalar jurnali", "icon": "notifications", "link": "/admin/notifications/notificationlog/"},
+                    {"title": "Push tokenlar", "icon": "smartphone", "link": "/admin/notifications/pushtoken/"},
+                    {"title": "Eslatmalar jadvali", "icon": "alarm", "link": "/admin/notifications/reminderschedule/"},
                 ],
             },
         ],

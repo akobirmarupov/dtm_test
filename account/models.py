@@ -7,7 +7,7 @@ from account.manager import UserManager
 
 class User(AbstractBaseUser, PermissionsMixin, BaseModel):
     email = models.EmailField(unique=True)
-    google_id = models.CharField(max_length=100, unique=True)
+    google_id = models.CharField(max_length=100, unique=True, null=True, blank=True)
     full_name = models.CharField(max_length=150, blank=True)
     avatar_url = models.URLField(blank=True)
     role = models.CharField(max_length=10, choices=Role.choices, default=Role.STUDENT)
@@ -23,6 +23,11 @@ class User(AbstractBaseUser, PermissionsMixin, BaseModel):
 
     USERNAME_FIELD = "email"
     REQUIRED_FIELDS = []
+
+    def save(self, *args, **kwargs):
+        if self.google_id == "":
+            self.google_id = None
+        super().save(*args, **kwargs)
 
     def __str__(self):
         return self.email
