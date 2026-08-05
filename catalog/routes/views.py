@@ -57,8 +57,12 @@ class SubjectListCreateAPIView(APIView):
         serializer = SubjectSerializer(page, many=True)
         response = paginator.get_paginated_response(serializer.data)
         
-        cache.set(cache_key, response, CACHE_DURATION['subject_list'])
-        return response
+        cached_data = cache.get(cache_key)
+        if cached_data is not None:
+            return Response(cached_data)
+
+        cache.set(cache_key, serializer.data, CACHE_DURATION[...])
+        return Response(serializer.data)
 
 
     @extend_schema(request=SubjectSerializer, responses=SubjectSerializer)
@@ -189,8 +193,14 @@ class TopicListCreateAPIView(APIView):
         serializer = TopicSerializer(page, many=True)
         response = paginator.get_paginated_response(serializer.data)
         
-        cache.set(cache_key, response, CACHE_DURATION['subject_list'])
-        return response
+        cached_data = cache.get(cache_key)
+        if cached_data is not None:
+            return Response(cached_data)
+
+        serializer = TopicSerializer(queryset, many=True)
+        data = serializer.data
+        cache.set(cache_key, data, CACHE_DURATION['subject_list'])
+        return Response(data)
 
 
     @extend_schema(request=TopicSerializer, responses=TopicSerializer)
@@ -330,7 +340,7 @@ class QuestionListCreateAPIView(APIView):
         serializer = serializer_class(page, many=True)
         response = paginator.get_paginated_response(serializer.data)
         
-        cache.set(cache_key, response, CACHE_DURATION['question_list'])
+        cache.set(cache_key, response.data, CACHE_DURATION['question_list'])
         return response
 
 
@@ -449,7 +459,3 @@ class QuestionDetailAPIView(APIView):
             "Savol o'chirildi: id=%s foydalanuvchi_id=%s", question_id, request.user.id,
         )
         return Response({"detail": "Savol muvaffaqiyatli o'chirildi"}, status=status.HTTP_204_NO_CONTENT)
-
-
-
-
