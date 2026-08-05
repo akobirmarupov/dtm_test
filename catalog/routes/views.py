@@ -15,7 +15,7 @@ from rest_framework.exceptions import NotFound
 
 from catalog.filters import SubjectFilter, QuestionFilter, TopicFilter
 from catalog.models import Subject, Question, Topic
-from common.permissions import IsAdmin, IsMentor, IsMentorOrAdmin, IsOwner, IsStudent
+from common.permissions import IsMentorOrAdmin
 from common.pagination import StandardResultsPagination
 from common.throttles import BurstUserRateThrottle
 from common.models import Role
