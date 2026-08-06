@@ -31,7 +31,7 @@ class TopicAdmin(ModelAdmin):
 
 @admin.register(Question)
 class QuestionAdmin(ModelAdmin):
-    list_display = ("short_text", "topic", "difficulty", "correct_option", "created_at")
+    list_display = ("id", "short_text", "topic", "difficulty", "correct_option", "created_at")
     list_filter = ("difficulty", "topic__subject", "topic")
     search_fields = ("text", "topic__name")
     autocomplete_fields = ("topic",)

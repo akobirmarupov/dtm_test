@@ -1,0 +1,508 @@
+{
+  "info": {
+    "name": "TestEngine API",
+    "description": "Test Engine API - Sessions, Answers, Results",
+    "version": "1.0.0"
+  },
+  "item": [
+    {
+      "name": "TestSessions",
+      "item": [
+        {
+          "name": "Yangi Sessiya Yaratish",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer YOUR_ACCESS_TOKEN"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"subject\": 1,\n    \"mode\": \"practice\"\n}"
+            },
+            "url": {
+              "raw": "http://localhost:8000/testengine/sessions/",
+              "protocol": "http",
+              "host": [
+                "localhost"
+              ],
+              "port": "8000",
+              "path": [
+                "testengine",
+                "sessions",
+                ""
+              ]
+            },
+            "description": "mode: 'practice' yoki 'exam'"
+          }
+        },
+        {
+          "name": "Sessiyalar Ro'yxati",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer YOUR_ACCESS_TOKEN"
+              }
+            ],
+            "url": {
+              "raw": "http://localhost:8000/testengine/sessions/?mode=practice&page=1",
+              "protocol": "http",
+              "host": [
+                "localhost"
+              ],
+              "port": "8000",
+              "path": [
+                "testengine",
+                "sessions",
+                ""
+              ],
+              "query": [
+                {
+                  "key": "mode",
+                  "value": "practice"
+                },
+                {
+                  "key": "page",
+                  "value": "1"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Sessiya Tafsiloti",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer YOUR_ACCESS_TOKEN"
+              }
+            ],
+            "url": {
+              "raw": "http://localhost:8000/testengine/sessions/1/",
+              "protocol": "http",
+              "host": [
+                "localhost"
+              ],
+              "port": "8000",
+              "path": [
+                "testengine",
+                "sessions",
+                "1",
+                ""
+              ]
+            }
+          }
+        },
+        {
+          "name": "Keyingi Savol (Adaptiv)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer YOUR_ACCESS_TOKEN"
+              }
+            ],
+            "url": {
+              "raw": "http://localhost:8000/testengine/sessions/1/next-question/",
+              "protocol": "http",
+              "host": [
+                "localhost"
+              ],
+              "port": "8000",
+              "path": [
+                "testengine",
+                "sessions",
+                "1",
+                "next-question",
+                ""
+              ]
+            }
+          }
+        },
+        {
+          "name": "Sessiyani Yakunlash",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer YOUR_ACCESS_TOKEN"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{}"
+            },
+            "url": {
+              "raw": "http://localhost:8000/testengine/sessions/1/finish/",
+              "protocol": "http",
+              "host": [
+                "localhost"
+              ],
+              "port": "8000",
+              "path": [
+                "testengine",
+                "sessions",
+                "1",
+                "finish",
+                ""
+              ]
+            },
+            "description": "TestResult avtomatik hisoblanadi"
+          }
+        },
+        {
+          "name": "Offline Javoblarni Sinxronlash",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer YOUR_ACCESS_TOKEN"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"answers\": [\n        {\n            \"question\": 1,\n            \"selected_option\": \"A\",\n            \"is_correct\": true,\n            \"confidence\": \"sure\",\n            \"time_spent_seconds\": 30\n        },\n        {\n            \"question\": 2,\n            \"selected_option\": \"C\",\n            \"is_correct\": false,\n            \"confidence\": \"guess\",\n            \"time_spent_seconds\": 45\n        }\n    ]\n}"
+            },
+            "url": {
+              "raw": "http://localhost:8000/testengine/sessions/1/sync/",
+              "protocol": "http",
+              "host": [
+                "localhost"
+              ],
+              "port": "8000",
+              "path": [
+                "testengine",
+                "sessions",
+                "1",
+                "sync",
+                ""
+              ]
+            }
+          }
+        },
+        {
+          "name": "Sessiya Holatini Yangilash",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer YOUR_ACCESS_TOKEN"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"mode\": \"exam\"\n}"
+            },
+            "url": {
+              "raw": "http://localhost:8000/testengine/sessions/1/",
+              "protocol": "http",
+              "host": [
+                "localhost"
+              ],
+              "port": "8000",
+              "path": [
+                "testengine",
+                "sessions",
+                "1",
+                ""
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Answers",
+      "item": [
+        {
+          "name": "Bitta Javob Yuborish",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer YOUR_ACCESS_TOKEN"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"question\": 5,\n    \"selected_option\": \"B\",\n    \"is_correct\": true,\n    \"confidence\": \"sure\",\n    \"time_spent_seconds\": 45\n}"
+            },
+            "url": {
+              "raw": "http://localhost:8000/testengine/sessions/1/answers/",
+              "protocol": "http",
+              "host": [
+                "localhost"
+              ],
+              "port": "8000",
+              "path": [
+                "testengine",
+                "sessions",
+                "1",
+                "answers",
+                ""
+              ]
+            }
+          }
+        },
+        {
+          "name": "Ko'p Javobni Bulk Yuborish",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer YOUR_ACCESS_TOKEN"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"answers\": [\n        {\n            \"question\": 1,\n            \"selected_option\": \"A\",\n            \"is_correct\": true,\n            \"confidence\": \"sure\",\n            \"time_spent_seconds\": 30\n        },\n        {\n            \"question\": 2,\n            \"selected_option\": \"B\",\n            \"is_correct\": true,\n            \"confidence\": \"sure\",\n            \"time_spent_seconds\": 35\n        },\n        {\n            \"question\": 3,\n            \"selected_option\": \"C\",\n            \"is_correct\": false,\n            \"confidence\": \"guess\",\n            \"time_spent_seconds\": 40\n        }\n    ]\n}"
+            },
+            "url": {
+              "raw": "http://localhost:8000/testengine/sessions/1/answers/bulk/",
+              "protocol": "http",
+              "host": [
+                "localhost"
+              ],
+              "port": "8000",
+              "path": [
+                "testengine",
+                "sessions",
+                "1",
+                "answers",
+                "bulk",
+                ""
+              ]
+            }
+          }
+        },
+        {
+          "name": "Sessiyaning Javoblari Ro'yxati",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer YOUR_ACCESS_TOKEN"
+              }
+            ],
+            "url": {
+              "raw": "http://localhost:8000/testengine/sessions/1/answers/?is_correct=true&page=1",
+              "protocol": "http",
+              "host": [
+                "localhost"
+              ],
+              "port": "8000",
+              "path": [
+                "testengine",
+                "sessions",
+                "1",
+                "answers",
+                ""
+              ],
+              "query": [
+                {
+                  "key": "is_correct",
+                  "value": "true"
+                },
+                {
+                  "key": "page",
+                  "value": "1"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Bitta Javob Tafsiloti",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer YOUR_ACCESS_TOKEN"
+              }
+            ],
+            "url": {
+              "raw": "http://localhost:8000/testengine/sessions/1/answers/5/",
+              "protocol": "http",
+              "host": [
+                "localhost"
+              ],
+              "port": "8000",
+              "path": [
+                "testengine",
+                "sessions",
+                "1",
+                "answers",
+                "5",
+                ""
+              ]
+            }
+          }
+        },
+        {
+          "name": "Javobni O'chirish",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer YOUR_ACCESS_TOKEN"
+              }
+            ],
+            "url": {
+              "raw": "http://localhost:8000/testengine/sessions/1/answers/5/",
+              "protocol": "http",
+              "host": [
+                "localhost"
+              ],
+              "port": "8000",
+              "path": [
+                "testengine",
+                "sessions",
+                "1",
+                "answers",
+                "5",
+                ""
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Results",
+      "item": [
+        {
+          "name": "Barcha Natijalari",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer YOUR_ACCESS_TOKEN"
+              }
+            ],
+            "url": {
+              "raw": "http://localhost:8000/testengine/results/?page=1&page_size=20",
+              "protocol": "http",
+              "host": [
+                "localhost"
+              ],
+              "port": "8000",
+              "path": [
+                "testengine",
+                "results",
+                ""
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "page_size",
+                  "value": "20"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Bitta Natija Tafsiloti",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer YOUR_ACCESS_TOKEN"
+              }
+            ],
+            "url": {
+              "raw": "http://localhost:8000/testengine/results/1/",
+              "protocol": "http",
+              "host": [
+                "localhost"
+              ],
+              "port": "8000",
+              "path": [
+                "testengine",
+                "results",
+                "1",
+                ""
+              ]
+            }
+          }
+        },
+        {
+          "name": "Mening Natijalari (Progress)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer YOUR_ACCESS_TOKEN"
+              }
+            ],
+            "url": {
+              "raw": "http://localhost:8000/testengine/results/my-results/?page=1",
+              "protocol": "http",
+              "host": [
+                "localhost"
+              ],
+              "port": "8000",
+              "path": [
+                "testengine",
+                "results",
+                "my-results",
+                ""
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                }
+              ]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}
