@@ -35,6 +35,7 @@ urlpatterns = [
    path("api/", include("account.urls")),
    path("catalog/", include("catalog.routes.urls")),
    path("testengine/", include("testengine.routes.urls")),
+   path("progress/", include("progress.routes.urls")),
 
    path("google-test/", GoogleTestView.as_view(), name="google-test"),
 ]

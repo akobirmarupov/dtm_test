@@ -1,0 +1,274 @@
+{
+  "info": {
+    "name": "Progress App API",
+    "description": "TestYourself Platform - Progress Module APIs",
+    "version": "1.0"
+  },
+  "baseUrl": "http://localhost:8000/progress",
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "YOUR_JWT_ACCESS_TOKEN",
+        "type": "string"
+      }
+    ]
+  },
+  "apis": [
+    {
+      "name": "ReviewCard - Takrorlash Kartalari",
+      "endpoints": [
+        {
+          "method": "GET",
+          "url": "/progress/reviews/",
+          "name": "Barcha Review Kartalar (Sahifalangan)",
+          "description": "Foydalanuvchining barcha review kartalarini olish. Filter qilish mumkin.",
+          "params": {
+            "user": "Foydalanuvchi ID (optional)",
+            "question": "Savol ID (optional)",
+            "stability_days_min": "Minimum eslab qolish kuchi (optional)",
+            "stability_days_max": "Maximum eslab qolish kuchi (optional)",
+            "next_review_date": "Takrorlash sanasi (YYYY-MM-DD, optional)",
+            "next_review_date_after": "Takrorlash sanasidan keyin (optional)",
+            "next_review_date_before": "Takrorlash sanasidan oldin (optional)",
+            "page": "Sahifa raqami (1, 2, ...)"
+          },
+          "headers": {
+            "Authorization": "Bearer YOUR_JWT_TOKEN",
+            "Content-Type": "application/json"
+          },
+          "response": {
+            "status": 200,
+            "body": {
+              "count": 42,
+              "next": "http://localhost:8000/progress/reviews/?page=2",
+              "previous": null,
+              "results": [
+                {
+                  "id": 1,
+                  "question": 5,
+                  "question_text": "Kvadrat tenglama... ",
+                  "subject_name": "Matematika",
+                  "topic_name": "Kvadrat tenglamalar",
+                  "stability_days": 2.2,
+                  "next_review_date": "2026-08-09"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "method": "GET",
+          "url": "/progress/reviews/today/",
+          "name": "Bugungi Review Kartalar",
+          "description": "Bugun takrorilanishi kerak bo'lgan barcha kartalarni qaytaradi (cache bilan)",
+          "headers": {
+            "Authorization": "Bearer YOUR_JWT_TOKEN"
+          },
+          "response": {
+            "status": 200,
+            "body": {
+              "count": 5,
+              "results": [
+                {
+                  "id": 1,
+                  "question": 5,
+                  "question_text": "Kvadrat tenglamada...",
+                  "subject_name": "Matematika",
+                  "topic_name": "Kvadrat tenglamalar",
+                  "stability_days": 1.5,
+                  "next_review_date": "2026-08-07"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "method": "POST",
+          "url": "/progress/reviews/{id}/submit/",
+          "name": "Review Kartasiga Javob Bering",
+          "description": "Review kartasiga javob topshiring. FSRS algoritmi yordamida kartani yangilaydi.",
+          "urlParams": {
+            "id": "Review Card ID (masalan: 5)"
+          },
+          "headers": {
+            "Authorization": "Bearer YOUR_JWT_TOKEN",
+            "Content-Type": "application/json"
+          },
+          "body": {
+            "is_correct": true,
+            "response_time": 15
+          },
+          "response": {
+            "status": 200,
+            "body": {
+              "id": 5,
+              "question": 12,
+              "question_text": "Kvadrat tenglamada diskriminant...",
+              "subject_name": "Matematika",
+              "topic_name": "Kvadrat tenglamalar",
+              "stability_days": 4.84,
+              "next_review_date": "2026-08-15"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Streak - Ketma-Ketlik",
+      "endpoints": [
+        {
+          "method": "GET",
+          "url": "/progress/streak/",
+          "name": "Streak Ma'lumoti",
+          "description": "Foydalanuvchining joriy va eng uzun ketma-ketlik, muz qolgan soni",
+          "headers": {
+            "Authorization": "Bearer YOUR_JWT_TOKEN"
+          },
+          "response": {
+            "status": 200,
+            "body": {
+              "current_streak": 12,
+              "longest_streak": 45,
+              "last_activity_date": "2026-08-07",
+              "freezes_available": 2
+            }
+          }
+        },
+        {
+          "method": "POST",
+          "url": "/progress/streak/freeze/",
+          "name": "Muzni Ishlatish (Streak Freeze)",
+          "description": "1 ta muz ishlatib, kunni ketma-ketlik uzilmasdan o'tkazish",
+          "headers": {
+            "Authorization": "Bearer YOUR_JWT_TOKEN",
+            "Content-Type": "application/json"
+          },
+          "body": {},
+          "response": {
+            "status": 200,
+            "body": {
+              "current_streak": 12,
+              "longest_streak": 45,
+              "last_activity_date": "2026-08-07",
+              "freezes_available": 1
+            }
+          },
+          "errorResponse": {
+            "status": 400,
+            "body": {
+              "detail": "Sizda ishlatish uchun 'muz' qolmagan."
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "XP - Ballar va Statistika",
+      "endpoints": [
+        {
+          "method": "GET",
+          "url": "/progress/xp/transactions/",
+          "name": "XP Operatsiyalari Tarixi (Sahifalangan)",
+          "description": "Foydalanuvchining barcha XP operatsiyalari. Filter qilish mumkin.",
+          "params": {
+            "user": "Foydalanuvchi ID (optional)",
+            "source": "Manba (test, streak, review, bonus) (optional)",
+            "amount_min": "Minimum XP miqdori (optional)",
+            "amount_max": "Maximum XP miqdori (optional)",
+            "created_at": "Yaratilgan sana (YYYY-MM-DD, optional)",
+            "created_at_after": "Yaratilgan sanasidan keyin (optional)",
+            "created_at_before": "Yaratilgan sanasidan oldin (optional)",
+            "page": "Sahifa raqami"
+          },
+          "headers": {
+            "Authorization": "Bearer YOUR_JWT_TOKEN"
+          },
+          "response": {
+            "status": 200,
+            "body": {
+              "count": 28,
+              "next": null,
+              "previous": "http://localhost:8000/progress/xp/transactions/?page=1",
+              "results": [
+                {
+                  "id": 1,
+                  "amount": 50,
+                  "source": "test",
+                  "source_display": "Test yakunlandi",
+                  "description": "Matematika test tamamlandi",
+                  "created_at": "2026-08-07T14:30:00Z"
+                },
+                {
+                  "id": 2,
+                  "amount": 10,
+                  "source": "streak",
+                  "source_display": "Streak",
+                  "description": "",
+                  "created_at": "2026-08-07T10:00:00Z"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "method": "GET",
+          "url": "/progress/xp/summary/",
+          "name": "XP Statistika",
+          "description": "Jami, bugungi va bu hafta uchun XP qiymatlarini qaytaradi (cache bilan)",
+          "headers": {
+            "Authorization": "Bearer YOUR_JWT_TOKEN"
+          },
+          "response": {
+            "status": 200,
+            "body": {
+              "xp_total": 2450,
+              "xp_today": 120,
+              "xp_this_week": 580
+            }
+          }
+        },
+        {
+          "method": "GET",
+          "url": "/progress/leaderboard/weekly/",
+          "name": "Haftalik Liderlik Taxtasi (Top 50)",
+          "description": "Shu haftada eng ko'p XP to'plagan top 50 foydalanuvchi. Joriy foydalanuvchining joyini ko'rsatadi.",
+          "headers": {
+            "Authorization": "Bearer YOUR_JWT_TOKEN"
+          },
+          "response": {
+            "status": 200,
+            "body": [
+              {
+                "rank": 1,
+                "nickname": "Ali_Khan",
+                "xp_this_week": 950,
+                "is_current_user": false
+              },
+              {
+                "rank": 2,
+                "nickname": "Xush_O'quvchi",
+                "xp_this_week": 850,
+                "is_current_user": false
+              },
+              {
+                "rank": 7,
+                "nickname": "Siz",
+                "xp_this_week": 580,
+                "is_current_user": true
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ],
+  "notes": {
+    "authentication": "Barcha API'lar IsStudent permission'iga ehtiyoj qiladi. JWT token Authorization headerida yuborilishi kerak.",
+    "caching": "ReviewCard Today, Streak, XP Summary 5 minut kesh bilan saqlanadi. Cache avtomatik o'chiriladi yangi ma'lumotlar kirganda.",
+    "pagination": "GET endpointlarda sahifalash default 20 ta natija. page parametri bilan yangilangan sahifani olish mumkin.",
+    "filters": "ReviewCard va XP endpointlarida DjangoFilterBackend yordamida filtrlash.",
+    "throttling": "POST endpointlarida BurstUserRateThrottle va SustainedUserRateThrottle ishlatiladi."
+  }
+}
