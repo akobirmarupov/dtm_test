@@ -1,19 +1,8 @@
 from django.urls import path
 
-from progress.routes.reviewcard_view import (
-    ReviewCardListAPIView,
-    ReviewCardTodayAPIView,
-    ReviewCardSubmitAPIview,
-)
-from progress.routes.streak_view import (
-    StreakDetailAPIView,
-    StreakFreezeAPIView,
-)
-from progress.routes.transaktion_view import (
-    XPTransactionListAPIView,
-    XPSummaryAPIView,
-    WeeklyLeaderboardAPIView,
-)
+from progress.routes.reviewcard_view import ReviewCardListAPIView, ReviewCardTodayAPIView, ReviewCardSubmitAPIview
+from progress.routes.streak_view import StreakDetailAPIView, StreakFreezeAPIView
+from progress.routes.transaktion_view import XPTransactionListAPIView, XPSummaryAPIView, WeeklyLeaderboardAPIView
 
 urlpatterns = [
     # ReviewCard

@@ -25,3 +25,7 @@ class SustainedUserRateThrottle(UserRateThrottle):
 
 class AnonBurstRateThrottle(AnonRateThrottle):
     scope = "anon_burst"
+
+
+class SubscriptionRequestThrottle(UserRateThrottle):
+    scope = "subscription_request"

@@ -23,7 +23,8 @@ ALLOWED_HOSTS = []
 
 
 AUTH_USER_MODEL = "account.User"
-GOOGLE_CLIENT_ID = config("GOOGLE_CLIENT_ID") 
+GOOGLE_CLIENT_ID = config("GOOGLE_CLIENT_ID")
+ADMIN_TELEGRAM_LINK = "https://t.me/akobir_ETA"
 
 
 # Application definition
@@ -173,6 +174,7 @@ REST_FRAMEWORK = {
     ),
     "DEFAULT_PAGINATION_CLASS": "common.pagination.StandardResultsPagination",
     "DEFAULT_THROTTLE_RATES": {
+        'sustained': '1000/day',
         "anon_burst": "10/min",
         "user_burst": "30/min",
         "burst": "60/min",

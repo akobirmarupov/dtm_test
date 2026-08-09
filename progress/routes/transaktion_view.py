@@ -122,7 +122,7 @@ class WeeklyLeaderboardAPIView(APIView):
         rows = (
             XPTransaction.objects
             .filter(created_at__date__gte=week_start)
-            .values('user_id', 'user__nickname')
+            .values('user_id', 'user__full_name')
             .annotate(xp_this_week=Sum('amount'))
             .order_by('-xp_this_week')[:LEADERBOARD_LIMIT]
         )
@@ -132,7 +132,7 @@ class WeeklyLeaderboardAPIView(APIView):
             leaderboard.append({
                 'rank': rank,
                 'user_id': row['user_id'],
-                'nickname': row['user__nickname'] or 'Anonim',
+                'nickname': row['user__full_name'] or 'Anonim',
                 'xp_this_week': row['xp_this_week'] or 0,
             })
         return leaderboard

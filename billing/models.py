@@ -40,8 +40,7 @@ class Payment(BaseModel):
 
     user = models.ForeignKey('account.User', on_delete=models.CASCADE, related_name='payments')
     subscription = models.ForeignKey(
-        Subscription, on_delete=models.SET_NULL, null=True, blank=True, related_name='payments'
-    )
+        Subscription, on_delete=models.SET_NULL, null=True, blank=True, related_name='payments')
     provider = models.CharField('Provayder', max_length=10, choices=Provider.choices)
     provider_transaction_id = models.CharField('Provayder tranzaksiya ID', max_length=100, unique=True)
     amount = models.DecimalField('Summa', max_digits=12, decimal_places=2)
