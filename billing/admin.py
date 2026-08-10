@@ -7,14 +7,14 @@ from .models import Payment, Plan, Subscription
 
 @admin.register(Plan)
 class PlanAdmin(ModelAdmin):
-    list_display = ("name", "price", "duration_days", "created_at")
-    search_fields = ("name",)
+    list_display = ("id", "name", "price", "duration_days", "created_at", "is_active")
+    search_fields = ("name", "is_active")
     ordering = ("price",)
 
 
 @admin.register(Subscription)
 class SubscriptionAdmin(ModelAdmin):
-    list_display = ("user", "plan", "status", "starts_at", "expires_at")
+    list_display = ("id", "user", "plan", "status", "starts_at", "expires_at")
     list_filter = ("status", "plan")
     search_fields = ("user__email", "user__full_name")
     autocomplete_fields = ("user", "plan")
@@ -23,7 +23,7 @@ class SubscriptionAdmin(ModelAdmin):
 
 @admin.register(Payment)
 class PaymentAdmin(ModelAdmin):
-    list_display = ("user", "provider", "provider_transaction_id", "amount", "status", "created_at")
+    list_display = ("id", "user", "provider", "provider_transaction_id", "amount", "status", "created_at")
     list_filter = ("provider", "status")
     search_fields = ("user__email", "provider_transaction_id")
     autocomplete_fields = ("user", "subscription")

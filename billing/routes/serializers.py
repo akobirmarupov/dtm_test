@@ -5,8 +5,8 @@ from billing.models import Plan, Subscription, Payment
 class PlanSerializer(serializers.ModelSerializer):
     class Meta:
         model = Plan
-        fields = ['id', 'name', 'price', 'duration_days']
-        read_only_fields = fields
+        fields = ['id', 'name', 'price', 'duration_days', 'is_active']
+        read_only_fields = ['id']
 
 
 class SubscriptionSerializer(serializers.ModelSerializer):

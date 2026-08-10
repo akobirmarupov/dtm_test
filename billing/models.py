@@ -7,6 +7,7 @@ class Plan(BaseModel):
     name = models.CharField('Nomi', max_length=100)
     price = models.DecimalField('Narxi', max_digits=12, decimal_places=2)
     duration_days = models.PositiveIntegerField('Muddati (kun)')
+    is_active = models.BooleanField(default=True)
 
     def __str__(self):
         return self.name

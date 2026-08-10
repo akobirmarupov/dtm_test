@@ -21,6 +21,8 @@ DEBUG = True
 
 ALLOWED_HOSTS = []
 
+ALLOWED_HOSTS = ['dtm-test.onrender.com', 'localhost', '127.0.0.1']
+
 
 AUTH_USER_MODEL = "account.User"
 GOOGLE_CLIENT_ID = config("GOOGLE_CLIENT_ID")

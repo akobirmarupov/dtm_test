@@ -16,10 +16,8 @@ from rest_framework.exceptions import NotFound
 
 from billing.models import Plan
 from billing.filters import PlanFilter
-from common.permissions import IsMentorOrAdmin
-from common.pagination import StandardResultsPagination
 from common.throttles import BurstUserRateThrottle
-from common.permissions import IsAdmin, IsMentorOrAdmin
+from common.permissions import IsAdmin
 from billing.routes.serializers import PlanSerializer
 
 logger = logging.getLogger('plan')
@@ -100,14 +98,17 @@ class PlanDetailAPIView(APIView):
         except Plan.DoesNotExist:
             raise NotFound(f"{pk} ID'li Plan topilmadi.")
 
+
     @extend_schema(responses={200: PlanSerializer}, tags=['Plan'])
     def get(self, request, pk):
         plan = self.get_object(pk)
         return Response(PlanSerializer(plan).data, status=status.HTTP_200_OK)
 
+
     @extend_schema(request=PlanSerializer, responses={200: PlanSerializer}, tags=['Plan'])
     def put(self, request, pk):
         return self._update(request, pk, partial=False)
+
 
     @extend_schema(request=PlanSerializer, responses={200: PlanSerializer}, tags=['Plan'])
     def patch(self, request, pk):
@@ -135,6 +136,7 @@ class PlanDetailAPIView(APIView):
         logger.info(f"Plan yangilandi: id={plan.id}, admin={request.user.id}")
 
         return Response(PlanSerializer(plan).data, status=status.HTTP_200_OK)
+
 
     @extend_schema(responses={200: dict}, tags=['Plan'])
     def delete(self, request, pk):

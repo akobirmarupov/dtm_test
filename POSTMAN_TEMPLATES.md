@@ -198,6 +198,149 @@
 
 ---
 
+## BILLING API - POSTMAN SHABLONLARI
+
+### 1. Yangi Rejani Yaratish
+**POST** `/billing/plan/`
+
+**Body (raw JSON):**
+```json
+{
+    "name": "Premium Plan",
+    "price": "9.99",
+    "duration_days": 30
+}
+```
+
+---
+
+### 2. Rejani Yangilash (PUT)
+**PUT** `/billing/plan/{id}/`
+
+**Body (raw JSON):**
+```json
+{
+    "name": "Premium Plan Updated",
+    "price": "12.99",
+    "duration_days": 30
+}
+```
+
+---
+
+### 3. Rejani Qismi Yangilash (PATCH)
+**PATCH** `/billing/plan/{id}/`
+
+**Body (raw JSON):**
+```json
+{
+    "price": "14.99"
+}
+```
+
+---
+
+### 4. Yangi Obuna (Subscription) Yaratish
+**POST** `/billing/subscriptions/`
+
+**Body (raw JSON):**
+```json
+{
+    "plan_id": 1
+}
+```
+
+---
+
+### 5. Obunani Yangilash (PATCH)
+**PATCH** `/billing/subscriptions/{id}/`
+
+**Body (raw JSON):**
+```json
+{
+    "status": "active",
+    "starts_at": "2026-08-10T10:00:00Z",
+    "expires_at": "2026-09-10T10:00:00Z"
+}
+```
+
+---
+
+### 6. Obunani Bekor Qilish
+**POST** `/billing/subscriptions/{id}/cancel/`
+
+**Body (raw JSON):**
+```json
+{}
+```
+
+---
+
+### 7. Yangi To'lov (Payment) Yaratish
+**POST** `/billing/payments/`
+
+**Body (raw JSON):**
+```json
+{
+    "subscription": 1,
+    "provider": "payme",
+    "provider_transaction_id": "TXN123456789",
+    "amount": "9.99"
+}
+```
+
+---
+
+### 8. To'lovni Yangilash (PATCH)
+**PATCH** `/billing/payments/{id}/`
+
+**Body (raw JSON):**
+```json
+{
+    "status": "success"
+}
+```
+
+---
+
+### 9. To'lovni Tasdiqlash (Approve)
+**POST** `/billing/payments/{id}/approve/`
+
+**Body (raw JSON):**
+```json
+{}
+```
+
+---
+
+### 10. To'lovni Rad Etish (Reject)
+**POST** `/billing/payments/{id}/reject/`
+
+**Body (raw JSON):**
+```json
+{}
+```
+
+---
+
+## BILLING - STATUS QIYMATLARI
+
+**Subscription Status:**
+- `"active"` - Faol
+- `"expired"` - Muddati o'tgan
+- `"cancelled"` - Bekor qilingan
+
+**Payment Status:**
+- `"pending"` - Kutilmoqda
+- `"success"` - Muvaffaqiyatli
+- `"failed"` - Muvaffaqiyatsiz
+
+**Payment Provider:**
+- `"payme"` - Payme
+- `"click"` - Click
+
+---
+
 ## ERROR RESPONSES
 
 ### 400 Bad Request
