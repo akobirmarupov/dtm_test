@@ -10,9 +10,6 @@ from common.throttles import AnonBurstRateThrottle, BurstUserRateThrottle
 
 from .serializer import GoogleAuthSerializer, UserSerializer, LogoutSerializer
 
-import logging
-logger = logging.getLogger(__name__)
-
 
 class GoogleAuthView(APIView):
     permission_classes = []
@@ -22,12 +19,10 @@ class GoogleAuthView(APIView):
         serializer = GoogleAuthSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
-        
         try:
             g = verify_google_token(serializer.validated_data["id_token"])
-        except Exception as e:
-            logger.exception("Google token tekshirishda xato")
-            return Response({"detail": f"Xato: {type(e).__name__}: {str(e)}"}, status=400)
+        except ValueError:
+            return Response({"detail": "Google tokeni noto'g'ri yoki eskirgan"}, status=400)
 
         user, created = User.objects.get_or_create(
             email=g["email"],
