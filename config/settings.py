@@ -46,7 +46,9 @@ LOCAL_APPS = [
     'billing',
     'progress',
     'testengine',
-    'catalog'
+    'catalog',
+    'rating',
+    'dashboard'
 ]
 
 
@@ -322,6 +324,29 @@ UNFOLD = {
                     {"title": "Xabarnomalar jurnali", "icon": "notifications", "link": "/admin/notifications/notificationlog/"},
                     {"title": "Push tokenlar", "icon": "smartphone", "link": "/admin/notifications/pushtoken/"},
                     {"title": "Eslatmalar jadvali", "icon": "alarm", "link": "/admin/notifications/reminderschedule/"},
+                ],
+            },
+            {
+                "title": "Reyting tizimi (Rating)",
+                "separator": True,
+                "collapsible": True,
+                "items": [
+                    {"title": "Reytinglar", "icon": "star", "link": "/admin/rating/rating/"},
+                    {"title": "Reyting tarixlari", "icon": "history", "link": "/admin/rating/ratinghistory/"},
+                    {"title": "Mavzu reytinglari", "icon": "grade", "link": "/admin/rating/topicrating/"},
+                    {"title": "Fan reytinglari", "icon": "assessment", "link": "/admin/rating/subjectrating/"},
+                    {"title": "Leaderboard", "icon": "leaderboard", "link": "/admin/rating/leaderboard/"},
+                ],
+            },
+            {
+                "title": "Mentor Dashboard (Dashboard)",
+                "separator": True,
+                "collapsible": True,
+                "items": [
+                    {"title": "Mentor-Talaba bog'lanishi", "icon": "people", "link": "/admin/dashboard/mentorstudent/"},
+                    {"title": "Ogohlantirishlar", "icon": "warning", "link": "/admin/dashboard/mentoralert/"},
+                    {"title": "Analytics Xulosa", "icon": "analytics", "link": "/admin/dashboard/analyticssummary/"},
+                    {"title": "Dashboard Kirish Logi", "icon": "login", "link": "/admin/dashboard/dashboardaccess/"},
                 ],
             },
         ],

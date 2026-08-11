@@ -1,15 +1,69 @@
 {
   "info": {
-    "name": "TestEngine API",
-    "description": "Test Engine API - Sessions, Answers, Results",
-    "version": "1.0.0"
+    "name": "DTM Test - TO'LIQ API COLLECTION",
+    "description": "TestYourself Platform - Barcha API endpoints",
+    "version": "2.0.0"
   },
+  "_postman_variable_scope": "environment",
+  "variable": [
+    {
+      "key": "BASE_URL",
+      "value": "http://localhost:8000",
+      "type": "string"
+    },
+    {
+      "key": "ACCESS_TOKEN",
+      "value": "YOUR_ACCESS_TOKEN",
+      "type": "string"
+    }
+  ],
   "item": [
     {
-      "name": "TestSessions",
+      "name": "🔐 AUTHENTICATION (Avtentifikatsiya)",
       "item": [
         {
-          "name": "Yangi Sessiya Yaratish",
+          "name": "Google orqali Kirish",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"id_token\": \"GOOGLE_ID_TOKEN_HERE\"\n}"
+            },
+            "url": {
+              "raw": "{{BASE_URL}}/api/auth/google/",
+              "protocol": "http",
+              "host": ["localhost"],
+              "port": "8000",
+              "path": ["api", "auth", "google", ""]
+            },
+            "description": "Google OAuth Token bilan login qilish"
+          }
+        },
+        {
+          "name": "O'z Profili Ko'rish (Me)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{ACCESS_TOKEN}}"
+              }
+            ],
+            "url": {
+              "raw": "{{BASE_URL}}/api/auth/me/",
+              "path": ["api", "auth", "me", ""]
+            },
+            "description": "Joriy foydalanuvchining ma'lumotlarini ko'rish"
+          }
+        },
+        {
+          "name": "Tizimdan Chiqish (Logout)",
           "request": {
             "method": "POST",
             "header": [
@@ -19,35 +73,626 @@
               },
               {
                 "key": "Authorization",
-                "value": "Bearer YOUR_ACCESS_TOKEN"
+                "value": "Bearer {{ACCESS_TOKEN}}"
               }
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n    \"subject\": 1,\n    \"mode\": \"practice\"\n}"
+              "raw": "{\n  \"refresh\": \"REFRESH_TOKEN_HERE\"\n}"
             },
             "url": {
-              "raw": "http://localhost:8000/testengine/sessions/",
-              "protocol": "http",
-              "host": [
-                "localhost"
-              ],
-              "port": "8000",
-              "path": [
-                "testengine",
-                "sessions",
-                ""
+              "raw": "{{BASE_URL}}/api/auth/logout/",
+              "path": ["api", "auth", "logout", ""]
+            },
+            "description": "Logout qilish"
+          }
+        }
+      ]
+    },
+    {
+      "name": "📚 CATALOG (Fanlar, Mavzular, Savollar)",
+      "item": [
+        {
+          "name": "Fanlarni Ko'rish",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{BASE_URL}}/catalog/subjects/?page=1",
+              "path": ["catalog", "subjects", ""],
+              "query": [{"key": "page", "value": "1"}]
+            },
+            "description": "Barcha fanlar ro'yxati"
+          }
+        },
+        {
+          "name": "Fan Qo'shish (Admin)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{ACCESS_TOKEN}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Kimyo\"\n}"
+            },
+            "url": {
+              "raw": "{{BASE_URL}}/catalog/subjects/",
+              "path": ["catalog", "subjects", ""]
+            },
+            "description": "Yangi fan yaratish (faqat Admin)"
+          }
+        },
+        {
+          "name": "Mavzularni Ko'rish",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{BASE_URL}}/catalog/topics/?subject_id=1&page=1",
+              "path": ["catalog", "topics", ""],
+              "query": [
+                {"key": "subject_id", "value": "1"},
+                {"key": "page", "value": "1"}
               ]
+            },
+            "description": "Fan bo'yicha mavzular"
+          }
+        },
+        {
+          "name": "Savollarni Ko'rish",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{BASE_URL}}/catalog/questions/?topic_id=1&difficulty=3&page=1",
+              "path": ["catalog", "questions", ""],
+              "query": [
+                {"key": "topic_id", "value": "1"},
+                {"key": "difficulty", "value": "3"},
+                {"key": "page", "value": "1"}
+              ]
+            },
+            "description": "Mavzu bo'yicha savollar (difficulty: 1-5)"
+          }
+        }
+      ]
+    },
+    {
+      "name": "🧪 TEST ENGINE (Test Sessiyalari, Javoblar)",
+      "item": [
+        {
+          "name": "Yangi Test Sessiyasi Yaratish",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{ACCESS_TOKEN}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"subject_id\": 1,\n  \"mode\": \"practice\"\n}"
+            },
+            "url": {
+              "raw": "{{BASE_URL}}/testengine/sessions/",
+              "path": ["testengine", "sessions", ""]
             },
             "description": "mode: 'practice' yoki 'exam'"
           }
         },
         {
-          "name": "Sessiyalar Ro'yxati",
+          "name": "Test Sessiyalarni Ko'rish",
           "request": {
             "method": "GET",
             "header": [
               {
+                "key": "Authorization",
+                "value": "Bearer {{ACCESS_TOKEN}}"
+              }
+            ],
+            "url": {
+              "raw": "{{BASE_URL}}/testengine/sessions/?page=1",
+              "path": ["testengine", "sessions", ""],
+              "query": [{"key": "page", "value": "1"}]
+            },
+            "description": "Barcha test sessiyalari"
+          }
+        },
+        {
+          "name": "Sessiya Detallari",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{ACCESS_TOKEN}}"
+              }
+            ],
+            "url": {
+              "raw": "{{BASE_URL}}/testengine/sessions/1/",
+              "path": ["testengine", "sessions", "1", ""]
+            },
+            "description": "Alohida test sessiya detallari"
+          }
+        },
+        {
+          "name": "Keyingi Savol Olish",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{ACCESS_TOKEN}}"
+              }
+            ],
+            "url": {
+              "raw": "{{BASE_URL}}/testengine/sessions/1/next-question/",
+              "path": ["testengine", "sessions", "1", "next-question", ""]
+            },
+            "description": "Test sessiyasida keyingi savolni olish"
+          }
+        },
+        {
+          "name": "Javob Berish",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{ACCESS_TOKEN}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"question_id\": 5,\n  \"selected_option\": \"B\",\n  \"confidence\": \"sure\",\n  \"time_spent_seconds\": 15\n}"
+            },
+            "url": {
+              "raw": "{{BASE_URL}}/testengine/sessions/1/answers/",
+              "path": ["testengine", "sessions", "1", "answers", ""]
+            },
+            "description": "Savol javobini save qilish"
+          }
+        },
+        {
+          "name": "Bulk Javob Qo'shish (Mobile Sync)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{ACCESS_TOKEN}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"answers\": [\n    {\n      \"question_id\": 5,\n      \"selected_option\": \"B\",\n      \"confidence\": \"sure\",\n      \"time_spent_seconds\": 15\n    },\n    {\n      \"question_id\": 6,\n      \"selected_option\": \"C\",\n      \"confidence\": \"guess\",\n      \"time_spent_seconds\": 30\n    }\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{BASE_URL}}/testengine/sessions/1/answers/bulk/",
+              "path": ["testengine", "sessions", "1", "answers", "bulk", ""]
+            },
+            "description": "Bir nechta javobni bir vaqtada qo'shish"
+          }
+        },
+        {
+          "name": "Test Tugash (Finish)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{ACCESS_TOKEN}}"
+              }
+            ],
+            "url": {
+              "raw": "{{BASE_URL}}/testengine/sessions/1/finish/",
+              "path": ["testengine", "sessions", "1", "finish", ""]
+            },
+            "description": "Test yakunlash va natija yaratish"
+          }
+        },
+        {
+          "name": "Test Natijalarni Ko'rish",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{ACCESS_TOKEN}}"
+              }
+            ],
+            "url": {
+              "raw": "{{BASE_URL}}/testengine/results/?page=1",
+              "path": ["testengine", "results", ""],
+              "query": [{"key": "page", "value": "1"}]
+            },
+            "description": "Barcha test natijalari"
+          }
+        },
+        {
+          "name": "O'z Test Natijalarni Ko'rish",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{ACCESS_TOKEN}}"
+              }
+            ],
+            "url": {
+              "raw": "{{BASE_URL}}/testengine/results/my-results/",
+              "path": ["testengine", "results", "my-results", ""]
+            },
+            "description": "Joriy foydalanuvchining natijalari"
+          }
+        }
+      ]
+    },
+    {
+      "name": "📈 PROGRESS (Streak, XP, Review)",
+      "item": [
+        {
+          "name": "Streakni Ko'rish",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{ACCESS_TOKEN}}"
+              }
+            ],
+            "url": {
+              "raw": "{{BASE_URL}}/progress/streak/",
+              "path": ["progress", "streak", ""]
+            },
+            "description": "Joriy streak statistikasi"
+          }
+        },
+        {
+          "name": "Freezni Ishlatish",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{ACCESS_TOKEN}}"
+              }
+            ],
+            "url": {
+              "raw": "{{BASE_URL}}/progress/streak/freeze/",
+              "path": ["progress", "streak", "freeze", ""]
+            },
+            "description": "Streak break-ni prevent qilish (1 marta free)"
+          }
+        },
+        {
+          "name": "Bugun Takrorlash Kerak Savollari",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{ACCESS_TOKEN}}"
+              }
+            ],
+            "url": {
+              "raw": "{{BASE_URL}}/progress/reviews/today/",
+              "path": ["progress", "reviews", "today", ""]
+            },
+            "description": "FSRS - bugun takrorlash kerak bo'lgan savollar"
+          }
+        },
+        {
+          "name": "Barcha Review Kartalari",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{ACCESS_TOKEN}}"
+              }
+            ],
+            "url": {
+              "raw": "{{BASE_URL}}/progress/reviews/?page=1",
+              "path": ["progress", "reviews", ""],
+              "query": [{"key": "page", "value": "1"}]
+            },
+            "description": "Barcha review kartalari"
+          }
+        },
+        {
+          "name": "Takrorlash Yechildi",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{ACCESS_TOKEN}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"is_correct\": true,\n  \"confidence\": \"sure\"\n}"
+            },
+            "url": {
+              "raw": "{{BASE_URL}}/progress/reviews/1/submit/",
+              "path": ["progress", "reviews", "1", "submit", ""]
+            },
+            "description": "Review kartasini submit qilish (FSRS update)"
+          }
+        },
+        {
+          "name": "XP Statistikasi",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{ACCESS_TOKEN}}"
+              }
+            ],
+            "url": {
+              "raw": "{{BASE_URL}}/progress/xp/summary/",
+              "path": ["progress", "xp", "summary", ""]
+            },
+            "description": "Umumiy XP statistika (today, week, month)"
+          }
+        },
+        {
+          "name": "XP Tranzaksiyalari",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{ACCESS_TOKEN}}"
+              }
+            ],
+            "url": {
+              "raw": "{{BASE_URL}}/progress/xp/transactions/?page=1",
+              "path": ["progress", "xp", "transactions", ""],
+              "query": [{"key": "page", "value": "1"}]
+            },
+            "description": "Barcha XP transaction historiyasi"
+          }
+        },
+        {
+          "name": "Haftalik Leaderboard",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{BASE_URL}}/progress/leaderboard/weekly/",
+              "path": ["progress", "leaderboard", "weekly", ""]
+            },
+            "description": "Top 100 talaba haftalik reyting"
+          }
+        }
+      ]
+    },
+    {
+      "name": "💳 BILLING (To'lov va Obuna)",
+      "item": [
+        {
+          "name": "Barcha Obuna Rejalarini Ko'rish",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{BASE_URL}}/billing/plan/",
+              "path": ["billing", "plan", ""]
+            },
+            "description": "Barcha to'lov rejalaları"
+          }
+        },
+        {
+          "name": "Obuna Rejasi Qo'shish (Admin)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{ACCESS_TOKEN}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Premium Monthly\",\n  \"price\": \"2.99\",\n  \"duration_days\": 30,\n  \"is_active\": true\n}"
+            },
+            "url": {
+              "raw": "{{BASE_URL}}/billing/plan/",
+              "path": ["billing", "plan", ""]
+            },
+            "description": "Yangi obuna rejasi yaratish"
+          }
+        },
+        {
+          "name": "Yangi Obuna Yaratish",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{ACCESS_TOKEN}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"plan_id\": 2\n}"
+            },
+            "url": {
+              "raw": "{{BASE_URL}}/billing/subscriptions/",
+              "path": ["billing", "subscriptions", ""]
+            },
+            "description": "Rejaga obuna qilish"
+          }
+        },
+        {
+          "name": "Barcha Obunaları Ko'rish",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{ACCESS_TOKEN}}"
+              }
+            ],
+            "url": {
+              "raw": "{{BASE_URL}}/billing/subscriptions/?page=1",
+              "path": ["billing", "subscriptions", ""],
+              "query": [{"key": "page", "value": "1"}]
+            },
+            "description": "Barcha obunaları"
+          }
+        },
+        {
+          "name": "Joriy Obunani Ko'rish",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{ACCESS_TOKEN}}"
+              }
+            ],
+            "url": {
+              "raw": "{{BASE_URL}}/billing/subscriptions/current/",
+              "path": ["billing", "subscriptions", "current", ""]
+            },
+            "description": "Foydalanuvchining joriy obunasi"
+          }
+        },
+        {
+          "name": "Obunani Bekor Qilish",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{ACCESS_TOKEN}}"
+              }
+            ],
+            "url": {
+              "raw": "{{BASE_URL}}/billing/subscriptions/1/cancel/",
+              "path": ["billing", "subscriptions", "1", "cancel", ""]
+            },
+            "description": "Obunani bekor qilish"
+          }
+        },
+        {
+          "name": "To'lov Qilish",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{ACCESS_TOKEN}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"subscription_id\": 1,\n  \"provider\": \"payme\",\n  \"amount\": \"2.99\"\n}"
+            },
+            "url": {
+              "raw": "{{BASE_URL}}/billing/payments/",
+              "path": ["billing", "payments", ""]
+            },
+            "description": "To'lov qilish (Payme/Click)"
+          }
+        },
+        {
+          "name": "Barcha To'lovlarni Ko'rish",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{ACCESS_TOKEN}}"
+              }
+            ],
+            "url": {
+              "raw": "{{BASE_URL}}/billing/payments/?page=1",
+              "path": ["billing", "payments", ""],
+              "query": [{"key": "page", "value": "1"}]
+            },
+            "description": "Barcha to'lovlar"
+          }
+        },
+        {
+          "name": "To'lovni Tasdiqlash (Admin)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{ACCESS_TOKEN}}"
+              }
+            ],
+            "url": {
+              "raw": "{{BASE_URL}}/billing/payments/1/approve/",
+              "path": ["billing", "payments", "1", "approve", ""]
+            },
+            "description": "To'lovni tasdiqlash va obunani aktiv qilish"
+          }
+        },
+        {
+          "name": "To'lovni Rad Etish (Admin)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{ACCESS_TOKEN}}"
+              }
+            ],
+            "url": {
+              "raw": "{{BASE_URL}}/billing/payments/1/reject/",
+              "path": ["billing", "payments", "1", "reject", ""]
+            },
+            "description": "To'lovni rad etish"
+          }
+        }
+      ]
+    }
+  ]
+}
                 "key": "Authorization",
                 "value": "Bearer YOUR_ACCESS_TOKEN"
               }
