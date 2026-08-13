@@ -7,6 +7,7 @@ from rest_framework_simplejwt.exceptions import TokenError
 from account.models import User
 from account.google_auth import verify_google_token
 from common.throttles import AnonBurstRateThrottle, BurstUserRateThrottle
+from notifications.models import NotificationLog
 
 from .serializer import GoogleAuthSerializer, UserSerializer, LogoutSerializer
 
@@ -37,6 +38,12 @@ class GoogleAuthView(APIView):
             user.full_name = g["full_name"] or user.full_name
             user.avatar_url = g["avatar_url"] or user.avatar_url
             user.save(update_fields=["full_name", "avatar_url"])
+        else:
+            NotificationLog.objects.create(
+                user=user,
+                type=NotificationLog.Type.WELCOME,
+                message="Tabriklaymiz! Siz ro'yxatdan muvaffaqiyatli o'tdingiz 🎉",
+            )
 
         tokens = RefreshToken.for_user(user)
         return Response({
