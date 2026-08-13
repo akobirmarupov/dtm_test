@@ -47,7 +47,7 @@ class SubjectListCreateAPIView(APIView):
         cache_key = f"subjects:list:{request.query_params.urlencode()}"
         cached = cache.get(cache_key)
         if cached:
-            return cached
+            return Response(cached)
         
         queryset = Subject.objects.all().prefetch_related('topics').order_by("name")
         queryset = SubjectFilter(request.query_params, queryset=queryset).qs
@@ -183,7 +183,7 @@ class TopicListCreateAPIView(APIView):
         cache_key = f"topics:list:{request.query_params.urlencode()}"
         cached = cache.get(cache_key)
         if cached:
-            return cached
+            return Response(cached)
         
         queryset = Topic.objects.select_related("subject").prefetch_related('questions').order_by("subject", "name")
         queryset = TopicFilter(request.query_params, queryset=queryset).qs
@@ -328,7 +328,7 @@ class QuestionListCreateAPIView(APIView):
         cache_key = f"questions:list:{user_role}:{request.query_params.urlencode()}"
         cached = cache.get(cache_key)
         if cached:
-            return cached
+            return Response(cached)
         
         queryset = Question.objects.select_related("topic__subject").prefetch_related().order_by("topic", "id")
         queryset = QuestionFilter(request.query_params, queryset=queryset).qs
