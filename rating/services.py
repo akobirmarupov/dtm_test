@@ -1,8 +1,3 @@
-"""
-Rating tizimini avtomatik yangilash uchun xizmatlar.
-TestResult yaratilganda ishlaydi.
-"""
-
 from datetime import timedelta
 from django.utils import timezone
 from django.db import transaction
@@ -11,13 +6,6 @@ from .models import Rating, RatingHistory, TopicRating, SubjectRating
 
 
 def calculate_stars(correct_count, incorrect_count):
-    """
-    Yulduzlar formulasi:
-    Stars = (Correct - Incorrect * 0.5) / Total * 5
-    
-    Misol:
-    - 10 to'g'ri + 5 notog'ri = (10 - 2.5) / 15 * 5 = 2.5 ⭐
-    """
     total = correct_count + incorrect_count
     if total == 0:
         return 0.0
@@ -100,7 +88,15 @@ def update_or_create_rating(user, test_session, correct_count, incorrect_count):
         rating.stars = new_stars
         
         rating.save()
-        
+
+        # Shu davrdagi o'rnini (rank) hisoblab qo'yamiz — bo'lmasa rank doim None bo'lib qoladi
+        better_count = Rating.objects.filter(
+            period=period, period_start_date=start_date, period_end_date=end_date,
+            stars__gt=rating.stars,
+        ).count()
+        rating.rank = better_count + 1
+        rating.save(update_fields=['rank'])
+
         # Reyting tarixi yaratish
         if old_stars != new_stars:
             RatingHistory.objects.create(

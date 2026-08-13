@@ -58,6 +58,7 @@ EXTERNAL_APPS = [
     'rest_framework_simplejwt',
     'rest_framework_simplejwt.token_blacklist',
     'drf_yasg',
+    'corsheaders',
 ]
 
 
@@ -65,6 +66,7 @@ INSTALLED_APPS = DJANGO_APPS + EXTERNAL_APPS + LOCAL_APPS
 
 
 MIDDLEWARE = [
+    'corsheaders.middleware.CorsMiddleware',
     'django.middleware.security.SecurityMiddleware',
     'whitenoise.middleware.WhiteNoiseMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
@@ -74,6 +76,20 @@ MIDDLEWARE = [
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]
+
+
+
+
+
+#cors
+CORS_ALLOWED_ORIGINS = [
+    "http://localhost:5173",
+    "http://localhost:5174",
+]
+
+
+CORS_ALLOW_CREDENTIALS = True
+
 
 ROOT_URLCONF = 'config.urls'
 
@@ -322,8 +338,7 @@ UNFOLD = {
                 "collapsible": True,
                 "items": [
                     {"title": "Xabarnomalar jurnali", "icon": "notifications", "link": "/admin/notifications/notificationlog/"},
-                    {"title": "Push tokenlar", "icon": "smartphone", "link": "/admin/notifications/pushtoken/"},
-                    {"title": "Eslatmalar jadvali", "icon": "alarm", "link": "/admin/notifications/reminderschedule/"},
+                    {"title": "E'lonlar jadvali", "icon": "announcement", "link": "/admin/notifications/announcement/"},
                 ],
             },
             {
