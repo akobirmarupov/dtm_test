@@ -33,6 +33,7 @@ class Payment(BaseModel):
     class Provider(models.TextChoices):
         PAYME = 'payme', 'Payme'
         CLICK = 'click', 'Click'
+        MANUAL = 'manual', "Qo'lda (Telegram orqali)"
 
     class Status(models.TextChoices):
         PENDING = 'pending', 'Kutilmoqda'

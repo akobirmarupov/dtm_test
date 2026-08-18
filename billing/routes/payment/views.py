@@ -101,10 +101,10 @@ class PaymentCreateListAPIView(APIView):
                 payment = Payment.objects.create(
                     user=request.user,
                     subscription=subscription,
-                    provider='manual',
+                    provider=Payment.Provider.MANUAL,
                     provider_transaction_id=f"ariza_{request.user.id}_{timezone.now().timestamp()}",
                     amount=plan.price,
-                    status='pending'
+                    status=Payment.Status.PENDING,
                 )
 
                 logger.info(
@@ -117,9 +117,9 @@ class PaymentCreateListAPIView(APIView):
             return Response(
                 {
                     "ariza": serializer.data,
-                    "message": "Arizangiz qabul qilindi! Obunani faollashtirish uchun "
-                              "quyidagi admin bilan Telegram orqali bog'laning va to'lovni "
-                              "amalga oshiring.",
+                    "message": "Arizangiz qabul qilindi! Quyidagi Telegram havola orqali "
+                              "adminlarimiz bilan bog'laning va to'lovni amalga oshiring — "
+                              "admin tasdiqlagach obunangiz avtomatik faollashadi.",
                     "admin_telegram": settings.ADMIN_TELEGRAM_LINK
                 },
                 status=status.HTTP_201_CREATED
@@ -144,7 +144,7 @@ class PaymentApproveAPIView(APIView):
         except Payment.DoesNotExist:
             raise NotFound("Ariza topilmadi")
 
-        if payment.status != 'pending':
+        if payment.status != Payment.Status.PENDING:
             return Response(
                 {"detail": "Bu ariza allaqachon ko'rib chiqilgan"},
                 status=status.HTTP_400_BAD_REQUEST
@@ -152,12 +152,11 @@ class PaymentApproveAPIView(APIView):
 
         try:
             with transaction.atomic():
-                payment.status = 'approved'
+                payment.status = Payment.Status.SUCCESS
                 payment.save(update_fields=['status'])
 
                 now = timezone.now()
-                expires_at = now + timedelta(days=payment.amount)
-                
+
                 subscription = payment.subscription
                 if not subscription:
                     return Response(
@@ -197,7 +196,7 @@ class PaymentRejectAPIView(APIView):
         except Payment.DoesNotExist:
             raise NotFound("Ariza topilmadi")
 
-        if payment.status != 'pending':
+        if payment.status != Payment.Status.PENDING:
             return Response(
                 {"detail": "Bu ariza allaqachon ko'rib chiqilgan"},
                 status=status.HTTP_400_BAD_REQUEST
@@ -207,7 +206,7 @@ class PaymentRejectAPIView(APIView):
 
         try:
             with transaction.atomic():
-                payment.status = 'rejected'
+                payment.status = Payment.Status.FAILED
                 payment.save(update_fields=['status'])
 
                 logger.info(
@@ -226,3 +225,27 @@ class PaymentRejectAPIView(APIView):
                 {"detail": "Arizani rad etishda xatolik yuz berdi"},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
+
+
+class PaymentInfoAPIView(APIView):
+    """
+    GET /billing/payments/info/
+
+    Foydalanuvchi biror tarifda "Obuna" tugmasini bosganda, "Ariza berish"
+    tugmasidan oldin ko'rsatiladigan tushuntirish matni va admin Telegram
+    havolasi. Hozircha banklar bilan integratsiya yo'q — to'lov qo'lda,
+    admin bilan Telegram orqali kelishilgan holda amalga oshiriladi.
+    """
+    permission_classes = [IsAuthenticated]
+
+    @extend_schema(responses={200: dict}, tags=['Payment'])
+    def get(self, request):
+        return Response(
+            {
+                "message": "Obunani faollashtirmoqchi bo'lsangiz, adminlarimiz bilan "
+                           "Telegram orqali bog'laning va obunani faollashtiring. "
+                           "\"Ariza berish\" tugmasini bosing — Telegram havolasi chiqadi.",
+                "admin_telegram": settings.ADMIN_TELEGRAM_LINK,
+            },
+            status=status.HTTP_200_OK,
+        )
