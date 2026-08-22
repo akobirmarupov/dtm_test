@@ -1,3 +1,4 @@
+from drf_spectacular.utils import extend_schema_serializer
 from rest_framework import serializers
 
 from progress.models import ReviewCard, Streak, XPTransaction
@@ -60,6 +61,7 @@ class XPSummarySerializer(serializers.Serializer):
     xp_this_week = serializers.IntegerField()
 
 
+@extend_schema_serializer(component_name='XPLeaderboardEntry')
 class LeaderboardEntrySerializer(serializers.Serializer):
     """GET /leaderboard/weekly/ — reyting qatori, XPTransaction'lardan agregatsiya qilinadi."""
     rank = serializers.IntegerField()

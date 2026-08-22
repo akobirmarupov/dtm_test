@@ -15,7 +15,12 @@ class MentorStudentSerializer(serializers.ModelSerializer):
             'id', 'mentor', 'mentor_email', 'student', 'student_email',
             'student_full_name', 'assigned_at', 'is_active', 'notes',
         ]
-        read_only_fields = ['id', 'mentor_email', 'student_email', 'student_full_name', 'assigned_at']
+        # `mentor` va `student` yozib bo'lmaydigan bo'lishi SHART: aks holda mentor
+        # o'z bog'lanishini PATCH qilib istalgan talabaga biriktirilib oladi.
+        read_only_fields = [
+            'id', 'mentor', 'mentor_email', 'student', 'student_email',
+            'student_full_name', 'assigned_at',
+        ]
 
     def validate(self, attrs):
         mentor = attrs.get('mentor') or getattr(self.instance, 'mentor', None)
@@ -41,7 +46,9 @@ class MentorAlertSerializer(serializers.ModelSerializer):
             'status', 'status_display', 'message', 'created_at', 'resolved_at', 'action_taken',
         ]
         read_only_fields = [
-            'id', 'mentor', 'student_email', 'alert_type_display',
+            # `status` faqat MentorAlertResolveSerializer orqali o'zgaradi —
+            # aks holda ogohlantirishni darrov 'resolved' qilib yaratish mumkin.
+            'id', 'mentor', 'student_email', 'alert_type_display', 'status',
             'status_display', 'created_at', 'resolved_at',
         ]
 

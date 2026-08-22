@@ -1,3 +1,4 @@
+from drf_spectacular.utils import extend_schema_serializer
 from rest_framework import serializers
 
 from rating.models import Rating, RatingHistory, TopicRating, SubjectRating
@@ -62,6 +63,7 @@ class RatingHistorySerializer(serializers.ModelSerializer):
         read_only_fields = fields
 
 
+@extend_schema_serializer(component_name='RatingLeaderboardEntry')
 class LeaderboardEntrySerializer(serializers.Serializer):
     """GET /rating/leaderboard/{period}/ — reyting qatori, Rating'dan olinadi."""
     rank = serializers.IntegerField()

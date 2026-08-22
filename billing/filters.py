@@ -27,6 +27,7 @@ class SubscriptionFilter(django_filters.FilterSet):
 
 class PaymentFilter(django_filters.FilterSet):
     status = django_filters.ChoiceFilter(choices=Payment.Status.choices)
+    plan = django_filters.NumberFilter(field_name='plan_id')
     provider = django_filters.ChoiceFilter(choices=Payment.Provider.choices)
     amount_min = django_filters.NumberFilter(field_name='amount', lookup_expr='gte')
     amount_max = django_filters.NumberFilter(field_name='amount', lookup_expr='lte')
@@ -35,4 +36,4 @@ class PaymentFilter(django_filters.FilterSet):
 
     class Meta:
         model = Payment
-        fields = ['user', 'status', 'provider']
+        fields = ['user', 'status', 'provider', 'plan']

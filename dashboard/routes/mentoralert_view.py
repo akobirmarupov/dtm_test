@@ -12,7 +12,7 @@ from common.permissions import IsMentorOrAdmin
 from common.pagination import StandardResultsPagination
 from common.models import Role
 
-from dashboard.models import MentorAlert
+from dashboard.models import MentorAlert, MentorStudent
 from dashboard.routes.serializers import MentorAlertSerializer, MentorAlertResolveSerializer
 
 logger = logging.getLogger(__name__)
@@ -43,6 +43,14 @@ class MentorAlertListCreateAPIView(APIView):
     def post(self, request):
         serializer = MentorAlertSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
+
+        # Mentor faqat o'ziga biriktirilgan talaba uchun ogohlantirish ocha oladi.
+        student = serializer.validated_data['student']
+        if request.user.role == Role.MENTOR and not MentorStudent.objects.filter(
+            mentor=request.user, student=student, is_active=True
+        ).exists():
+            raise PermissionDenied("Bu talaba sizga biriktirilmagan")
+
         alert = serializer.save(mentor=request.user)
 
         logger.info(

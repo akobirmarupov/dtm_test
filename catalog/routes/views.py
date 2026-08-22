@@ -1,26 +1,33 @@
 from __future__ import annotations
 
+import logging
+
+from django.core.cache import cache
+from django.db import IntegrityError, transaction
+from drf_spectacular.utils import OpenApiParameter, extend_schema
+from rest_framework import serializers, status
+from rest_framework.exceptions import NotFound
+from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
-from rest_framework import status
 
-from drf_spectacular.utils import extend_schema
-
-from django.db import IntegrityError, transaction
-from django.core.cache import cache
-import logging
-
-from rest_framework.exceptions import NotFound
-
-from catalog.filters import SubjectFilter, QuestionFilter, TopicFilter
-from catalog.models import Subject, Question, Topic
-from common.permissions import IsMentorOrAdmin
-from common.pagination import StandardResultsPagination
-from common.throttles import BurstUserRateThrottle
+from catalog.filters import QuestionFilter, SubjectFilter, TopicFilter
+from catalog.models import Question, Subject, Topic
+from catalog.routes.serializers import (
+    QuestionAdminSerializer,
+    QuestionSerializer,
+    QuestionWriteSerializer,
+    SubjectSerializer,
+    SubjectWriteSerializer,
+    TopicSerializer,
+    TopicWriteSerializer,
+)
+from common.i18n import SUPPORTED_LANGUAGES, resolve_language
 from common.models import Role
-from catalog.routes.serializers import SubjectSerializer, TopicSerializer, QuestionSerializer, QuestionWriteSerializer
-
+from common.pagination import StandardResultsPagination
+from common.permissions import IsMentorOrAdmin
+from common.throttles import BurstUserRateThrottle
 
 subject_logger = logging.getLogger('subject')
 topic_logger = logging.getLogger('topic')
@@ -29,11 +36,36 @@ question_logger = logging.getLogger('question')
 
 CACHE_DURATION = {
     'subject_list': 60 * 5,
-    'question_list': 60 * 2
+    'question_list': 60 * 2,
 }
 
+# Har bir ro'yxat endpointida ko'rsatiladigan til parametri.
+LANGUAGE_PARAMETER = OpenApiParameter(
+    'lang',
+    str,
+    description="Javob tili: uz (standart), ru, en. `X-Language` header yoki "
+                "`Accept-Language` orqali ham berish mumkin.",
+    enum=list(SUPPORTED_LANGUAGES),
+)
 
-class SubjectListCreateAPIView(APIView):
+
+def detail_response(name):
+    """`{"detail": "..."}` javobini sxemada to'g'ri ko'rsatish uchun."""
+    from drf_spectacular.utils import inline_serializer
+    return inline_serializer(name=name, fields={'detail': serializers.CharField()})
+
+
+class LanguageAwareAPIView(APIView):
+    """Serializerlarga `request` va `language` ni yetkazadigan asos."""
+
+    def get_serializer_context(self, request):
+        return {'request': request, 'language': resolve_language(request)}
+
+
+# ---------------------------------------------------------------------------
+# Subject
+# ---------------------------------------------------------------------------
+class SubjectListCreateAPIView(LanguageAwareAPIView):
     throttle_classes = [BurstUserRateThrottle]
 
     def get_permissions(self):
@@ -41,42 +73,46 @@ class SubjectListCreateAPIView(APIView):
             return [IsAuthenticated(), IsMentorOrAdmin()]
         return [IsAuthenticated()]
 
-
-    @extend_schema(responses=SubjectSerializer(many=True))
+    @extend_schema(
+        parameters=[LANGUAGE_PARAMETER],
+        responses=SubjectSerializer(many=True),
+        tags=['Catalog'],
+    )
     def get(self, request):
-        cache_key = f"subjects:list:{request.query_params.urlencode()}"
+        language = resolve_language(request)
+        # Til kesh kalitiga kirishi SHART — aks holda ruscha so'ragan
+        # foydalanuvchiga o'zbekcha keshdan javob qaytadi.
+        cache_key = f"subjects:list:{language}:{request.query_params.urlencode()}"
         cached = cache.get(cache_key)
-        if cached:
+        if cached is not None:
             return Response(cached)
-        
+
         queryset = Subject.objects.all().prefetch_related('topics').order_by("name")
         queryset = SubjectFilter(request.query_params, queryset=queryset).qs
 
         paginator = StandardResultsPagination()
         page = paginator.paginate_queryset(queryset, request, view=self)
-        serializer = SubjectSerializer(page, many=True)
+        serializer = SubjectSerializer(page, many=True, context=self.get_serializer_context(request))
         response = paginator.get_paginated_response(serializer.data)
-        
-        cached_data = cache.get(cache_key)
-        if cached_data is not None:
-            return Response(cached_data)
 
-        cache.set(cache_key, serializer.data, CACHE_DURATION[...])
-        return Response(serializer.data)
+        cache.set(cache_key, response.data, CACHE_DURATION['subject_list'])
+        return response
 
-
-    @extend_schema(request=SubjectSerializer, responses=SubjectSerializer)
+    @extend_schema(
+        request=SubjectWriteSerializer,
+        responses={201: SubjectSerializer, 400: detail_response('SubjectCreateError')},
+        tags=['Catalog'],
+    )
     def post(self, request):
-        serializer = SubjectSerializer(data=request.data)
+        serializer = SubjectWriteSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
         try:
             with transaction.atomic():
                 subject = serializer.save()
-                cache.delete_pattern('subjects:list:*')
         except IntegrityError as e:
             subject_logger.error(
-                "Fan yaratishda IntegrityError: %s, ma'lumot: %s", 
+                "Fan yaratishda IntegrityError: %s, ma'lumot: %s",
                 str(e), request.data, extra={"user_id": request.user.id}
             )
             return Response(
@@ -84,14 +120,19 @@ class SubjectListCreateAPIView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
+        cache.delete_pattern('subjects:list:*')
+
         subject_logger.info(
             "Fan yaratildi: id=%s nomi=%r foydalanuvchi_id=%s",
             subject.id, subject.name, request.user.id,
         )
-        return Response(SubjectSerializer(subject).data, status=status.HTTP_201_CREATED)
+        return Response(
+            SubjectSerializer(subject, context=self.get_serializer_context(request)).data,
+            status=status.HTTP_201_CREATED,
+        )
 
 
-class SubjectDetailAPIView(APIView):
+class SubjectDetailAPIView(LanguageAwareAPIView):
     throttle_classes = [BurstUserRateThrottle]
 
     def get_permissions(self):
@@ -103,47 +144,52 @@ class SubjectDetailAPIView(APIView):
         try:
             return Subject.objects.get(pk=pk)
         except (Subject.DoesNotExist, ValueError, TypeError):
-            raise NotFound({"detail": "Bunday fan mavjud emas."})
+            raise NotFound("Bunday fan mavjud emas.")
 
-
-    @extend_schema(responses=SubjectSerializer)
+    @extend_schema(
+        parameters=[LANGUAGE_PARAMETER], responses=SubjectSerializer, tags=['Catalog']
+    )
     def get(self, request, pk):
         subject = self.get_object(pk)
-        return Response(SubjectSerializer(subject).data)
+        return Response(
+            SubjectSerializer(subject, context=self.get_serializer_context(request)).data
+        )
 
-
-    @extend_schema(request=SubjectSerializer, responses=SubjectSerializer)
+    @extend_schema(request=SubjectWriteSerializer, responses=SubjectSerializer, tags=['Catalog'])
     def put(self, request, pk):
         return self._update(request, pk, partial=False)
 
-
-    @extend_schema(request=SubjectSerializer, responses=SubjectSerializer)
+    @extend_schema(request=SubjectWriteSerializer, responses=SubjectSerializer, tags=['Catalog'])
     def patch(self, request, pk):
         return self._update(request, pk, partial=True)
 
     def _update(self, request, pk, *, partial):
         subject = self.get_object(pk)
-        serializer = SubjectSerializer(subject, data=request.data, partial=partial)
+        serializer = SubjectWriteSerializer(subject, data=request.data, partial=partial)
         serializer.is_valid(raise_exception=True)
 
         try:
             with transaction.atomic():
-                serializer.save()
-                cache.delete_pattern('subjects:list:*')
+                subject = serializer.save()
         except IntegrityError:
             return Response(
                 {"detail": "Bu nomdagi fan allaqachon mavjud."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
+        cache.delete_pattern('subjects:list:*')
+
         subject_logger.info(
             "Fan tahrirlandi: id=%s nomi=%r foydalanuvchi_id=%s",
             subject.id, subject.name, request.user.id,
         )
-        return Response(serializer.data)
+        return Response(
+            SubjectSerializer(subject, context=self.get_serializer_context(request)).data
+        )
 
-
-    @extend_schema(responses={204: None})
+    @extend_schema(
+        responses={204: None, 409: detail_response('SubjectDeleteConflict')}, tags=['Catalog']
+    )
     def delete(self, request, pk):
         subject = self.get_object(pk)
 
@@ -161,7 +207,8 @@ class SubjectDetailAPIView(APIView):
         subject_id = subject.id
         with transaction.atomic():
             subject.delete()
-            cache.delete_pattern('subjects:list:*')
+
+        cache.delete_pattern('subjects:list:*')
 
         subject_logger.warning(
             "Fan o'chirildi: id=%s foydalanuvchi_id=%s", subject_id, request.user.id,
@@ -169,7 +216,10 @@ class SubjectDetailAPIView(APIView):
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 
-class TopicListCreateAPIView(APIView):
+# ---------------------------------------------------------------------------
+# Topic
+# ---------------------------------------------------------------------------
+class TopicListCreateAPIView(LanguageAwareAPIView):
     throttle_classes = [BurstUserRateThrottle]
 
     def get_permissions(self):
@@ -177,41 +227,41 @@ class TopicListCreateAPIView(APIView):
             return [IsAuthenticated(), IsMentorOrAdmin()]
         return [IsAuthenticated()]
 
-
-    @extend_schema(responses=TopicSerializer(many=True))
+    @extend_schema(
+        parameters=[LANGUAGE_PARAMETER],
+        responses=TopicSerializer(many=True),
+        tags=['Catalog'],
+    )
     def get(self, request):
-        cache_key = f"topics:list:{request.query_params.urlencode()}"
+        language = resolve_language(request)
+        cache_key = f"topics:list:{language}:{request.query_params.urlencode()}"
         cached = cache.get(cache_key)
-        if cached:
+        if cached is not None:
             return Response(cached)
-        
-        queryset = Topic.objects.select_related("subject").prefetch_related('questions').order_by("subject", "name")
+
+        queryset = Topic.objects.select_related("subject").order_by("subject", "name")
         queryset = TopicFilter(request.query_params, queryset=queryset).qs
 
         paginator = StandardResultsPagination()
         page = paginator.paginate_queryset(queryset, request, view=self)
-        serializer = TopicSerializer(page, many=True)
+        serializer = TopicSerializer(page, many=True, context=self.get_serializer_context(request))
         response = paginator.get_paginated_response(serializer.data)
-        
-        cached_data = cache.get(cache_key)
-        if cached_data is not None:
-            return Response(cached_data)
 
-        serializer = TopicSerializer(queryset, many=True)
-        data = serializer.data
-        cache.set(cache_key, data, CACHE_DURATION['subject_list'])
-        return Response(data)
+        cache.set(cache_key, response.data, CACHE_DURATION['subject_list'])
+        return response
 
-
-    @extend_schema(request=TopicSerializer, responses=TopicSerializer)
+    @extend_schema(
+        request=TopicWriteSerializer,
+        responses={201: TopicSerializer, 400: detail_response('TopicCreateError')},
+        tags=['Catalog'],
+    )
     def post(self, request):
-        serializer = TopicSerializer(data=request.data)
+        serializer = TopicWriteSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
         try:
             with transaction.atomic():
                 topic = serializer.save()
-                cache.delete_pattern('topics:list:*')
         except IntegrityError as e:
             topic_logger.error(
                 "Mavzu yaratishda IntegrityError: %s, ma'lumot: %s",
@@ -222,14 +272,19 @@ class TopicListCreateAPIView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
+        cache.delete_pattern('topics:list:*')
+
         topic_logger.info(
             "Mavzu yaratildi: id=%s nomi=%r subject_id=%s foydalanuvchi_id=%s",
             topic.id, topic.name, topic.subject_id, request.user.id,
         )
-        return Response(TopicSerializer(topic).data, status=status.HTTP_201_CREATED)
+        return Response(
+            TopicSerializer(topic, context=self.get_serializer_context(request)).data,
+            status=status.HTTP_201_CREATED,
+        )
 
 
-class TopicDetailAPIView(APIView):
+class TopicDetailAPIView(LanguageAwareAPIView):
     throttle_classes = [BurstUserRateThrottle]
 
     def get_permissions(self):
@@ -241,48 +296,50 @@ class TopicDetailAPIView(APIView):
         try:
             return Topic.objects.select_related("subject").get(pk=pk)
         except (Topic.DoesNotExist, ValueError, TypeError):
-            raise NotFound({"detail": "Bunday mavzu mavjud emas."})
+            raise NotFound("Bunday mavzu mavjud emas.")
 
-
-    @extend_schema(responses=TopicSerializer)
+    @extend_schema(parameters=[LANGUAGE_PARAMETER], responses=TopicSerializer, tags=['Catalog'])
     def get(self, request, pk):
         topic = self.get_object(pk)
-        return Response(TopicSerializer(topic).data)
+        return Response(
+            TopicSerializer(topic, context=self.get_serializer_context(request)).data
+        )
 
-
-    @extend_schema(request=TopicSerializer, responses=TopicSerializer)
+    @extend_schema(request=TopicWriteSerializer, responses=TopicSerializer, tags=['Catalog'])
     def put(self, request, pk):
         return self._update(request, pk, partial=False)
 
-
-    @extend_schema(request=TopicSerializer, responses=TopicSerializer)
+    @extend_schema(request=TopicWriteSerializer, responses=TopicSerializer, tags=['Catalog'])
     def patch(self, request, pk):
         return self._update(request, pk, partial=True)
 
-
     def _update(self, request, pk, *, partial):
         topic = self.get_object(pk)
-        serializer = TopicSerializer(topic, data=request.data, partial=partial)
+        serializer = TopicWriteSerializer(topic, data=request.data, partial=partial)
         serializer.is_valid(raise_exception=True)
 
         try:
             with transaction.atomic():
-                serializer.save()
-                cache.delete_pattern('topics:list:*')
+                topic = serializer.save()
         except IntegrityError:
             return Response(
                 {"detail": "Bu fan ichida shu nomli mavzu allaqachon mavjud."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
+        cache.delete_pattern('topics:list:*')
+
         topic_logger.info(
             "Mavzu tahrirlandi: id=%s nomi=%r subject_id=%s foydalanuvchi_id=%s",
             topic.id, topic.name, topic.subject_id, request.user.id,
         )
-        return Response(TopicSerializer(topic).data)
+        return Response(
+            TopicSerializer(topic, context=self.get_serializer_context(request)).data
+        )
 
-
-    @extend_schema(responses={204: None})
+    @extend_schema(
+        responses={204: None, 409: detail_response('TopicDeleteConflict')}, tags=['Catalog']
+    )
     def delete(self, request, pk):
         topic = self.get_object(pk)
 
@@ -290,7 +347,7 @@ class TopicDetailAPIView(APIView):
             return Response(
                 {
                     "detail": (
-                        "Bu mavzuya bog'liq savollar mavjud. Mavzuni o'chirishdan oldin "
+                        "Bu mavzuga bog'liq savollar mavjud. Mavzuni o'chirishdan oldin "
                         "unga tegishli barcha savollarni o'chiring yoki boshqa mavzuga ko'chiring."
                     )
                 },
@@ -300,16 +357,22 @@ class TopicDetailAPIView(APIView):
         topic_id = topic.id
         with transaction.atomic():
             topic.delete()
-            cache.delete_pattern('topics:list:*')
+
+        cache.delete_pattern('topics:list:*')
 
         topic_logger.warning(
             "Mavzu o'chirildi: id=%s foydalanuvchi_id=%s", topic_id, request.user.id,
         )
-        return Response({"detail": "Mavzu muvaffaqiyatli o'chirildi"}, status=status.HTTP_204_NO_CONTENT)
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
 
-class QuestionListCreateAPIView(APIView):
+# ---------------------------------------------------------------------------
+# Question
+# ---------------------------------------------------------------------------
+class QuestionListCreateAPIView(LanguageAwareAPIView):
     throttle_classes = [BurstUserRateThrottle]
+    # Rasm yuklash uchun multipart shart; JSON ham (rasmsiz) ishlayveradi.
+    parser_classes = [JSONParser, MultiPartParser, FormParser]
 
     def get_permissions(self):
         if self.request.method == "POST":
@@ -317,42 +380,61 @@ class QuestionListCreateAPIView(APIView):
         return [IsAuthenticated()]
 
     def select_serializer(self, user):
-        if user.role in (Role.MENTOR, Role.ADMIN):
-            return QuestionWriteSerializer
+        if getattr(user, 'role', None) in (Role.MENTOR, Role.ADMIN):
+            return QuestionAdminSerializer
         return QuestionSerializer
 
-
-    @extend_schema(responses=QuestionSerializer(many=True))
+    @extend_schema(
+        parameters=[LANGUAGE_PARAMETER],
+        responses=QuestionSerializer(many=True),
+        tags=['Catalog'],
+    )
     def get(self, request):
         user_role = getattr(request.user, 'role', Role.STUDENT)
-        cache_key = f"questions:list:{user_role}:{request.query_params.urlencode()}"
+        language = resolve_language(request)
+        cache_key = (
+            f"questions:list:{user_role}:{language}:{request.query_params.urlencode()}"
+        )
         cached = cache.get(cache_key)
-        if cached:
+        if cached is not None:
             return Response(cached)
-        
-        queryset = Question.objects.select_related("topic__subject").prefetch_related().order_by("topic", "id")
+
+        queryset = Question.objects.select_related("topic__subject").order_by("topic", "id")
         queryset = QuestionFilter(request.query_params, queryset=queryset).qs
 
         paginator = StandardResultsPagination()
         page = paginator.paginate_queryset(queryset, request, view=self)
-        
+
         serializer_class = self.select_serializer(request.user)
-        serializer = serializer_class(page, many=True)
+        serializer = serializer_class(
+            page, many=True, context=self.get_serializer_context(request)
+        )
         response = paginator.get_paginated_response(serializer.data)
-        
+
         cache.set(cache_key, response.data, CACHE_DURATION['question_list'])
         return response
 
-
-    @extend_schema(request=QuestionWriteSerializer, responses=QuestionWriteSerializer)
+    @extend_schema(
+        request={
+            'multipart/form-data': QuestionWriteSerializer,
+            'application/json': QuestionWriteSerializer,
+        },
+        responses={201: QuestionAdminSerializer, 400: detail_response('QuestionCreateError')},
+        tags=['Catalog'],
+        description="Savol yaratish. `image` — IXTIYORIY: rasm kerak bo'lsa "
+                    "`multipart/form-data` bilan yuboriladi, kerak bo'lmasa "
+                    "oddiy JSON yetarli. `text_ru`/`text_en` va "
+                    "`options_ru`/`options_en` ham ixtiyoriy tarjimalar.",
+    )
     def post(self, request):
-        serializer = QuestionWriteSerializer(data=request.data)
+        serializer = QuestionWriteSerializer(
+            data=request.data, context=self.get_serializer_context(request)
+        )
         serializer.is_valid(raise_exception=True)
 
         try:
             with transaction.atomic():
                 question = serializer.save()
-                cache.delete_pattern('questions:list:*')
         except IntegrityError as e:
             question_logger.error(
                 "Savol yaratishda xato: %s, ma'lumot: %s",
@@ -363,15 +445,22 @@ class QuestionListCreateAPIView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
+        cache.delete_pattern('questions:list:*')
+
         question_logger.info(
-            "Savol yaratildi: id=%s topic_id=%s qiyinlik=%s foydalanuvchi_id=%s",
-            question.id, question.topic_id, question.difficulty, request.user.id,
+            "Savol yaratildi: id=%s topic_id=%s qiyinlik=%s rasm=%s foydalanuvchi_id=%s",
+            question.id, question.topic_id, question.difficulty,
+            bool(question.image), request.user.id,
         )
-        return Response(QuestionWriteSerializer(question).data, status=status.HTTP_201_CREATED)
+        return Response(
+            QuestionAdminSerializer(question, context=self.get_serializer_context(request)).data,
+            status=status.HTTP_201_CREATED,
+        )
 
 
-class QuestionDetailAPIView(APIView):
+class QuestionDetailAPIView(LanguageAwareAPIView):
     throttle_classes = [BurstUserRateThrottle]
+    parser_classes = [JSONParser, MultiPartParser, FormParser]
 
     def get_permissions(self):
         if self.request.method in ("GET", "HEAD", "OPTIONS"):
@@ -379,43 +468,61 @@ class QuestionDetailAPIView(APIView):
         return [IsAuthenticated(), IsMentorOrAdmin()]
 
     def select_serializer(self, user):
-        from common.models import Role
-        if user.role in (Role.MENTOR, Role.ADMIN):
-            return QuestionWriteSerializer
+        if getattr(user, 'role', None) in (Role.MENTOR, Role.ADMIN):
+            return QuestionAdminSerializer
         return QuestionSerializer
 
     def get_object(self, pk):
         try:
             return Question.objects.select_related("topic__subject").get(pk=pk)
         except (Question.DoesNotExist, ValueError, TypeError):
-            raise NotFound({"detail": "Bunday savol mavjud emas."})
+            raise NotFound("Bunday savol mavjud emas.")
 
-
-    @extend_schema(responses=QuestionSerializer)
+    @extend_schema(parameters=[LANGUAGE_PARAMETER], responses=QuestionSerializer, tags=['Catalog'])
     def get(self, request, pk):
         question = self.get_object(pk)
         serializer_class = self.select_serializer(request.user)
-        return Response(serializer_class(question).data)
+        return Response(
+            serializer_class(question, context=self.get_serializer_context(request)).data
+        )
 
-
-    @extend_schema(request=QuestionWriteSerializer, responses=QuestionWriteSerializer)
+    @extend_schema(
+        request={
+            'multipart/form-data': QuestionWriteSerializer,
+            'application/json': QuestionWriteSerializer,
+        },
+        responses=QuestionAdminSerializer,
+        tags=['Catalog'],
+    )
     def put(self, request, pk):
         return self._update(request, pk, partial=False)
 
-
-    @extend_schema(request=QuestionWriteSerializer, responses=QuestionWriteSerializer)
+    @extend_schema(
+        request={
+            'multipart/form-data': QuestionWriteSerializer,
+            'application/json': QuestionWriteSerializer,
+        },
+        responses=QuestionAdminSerializer,
+        tags=['Catalog'],
+        description="Savolni qisman tahrirlash. Rasmni olib tashlash uchun "
+                    "`image: null` yuboring.",
+    )
     def patch(self, request, pk):
         return self._update(request, pk, partial=True)
 
     def _update(self, request, pk, *, partial):
         question = self.get_object(pk)
-        serializer = QuestionWriteSerializer(question, data=request.data, partial=partial)
+        old_image = question.image.name if question.image else None
+
+        serializer = QuestionWriteSerializer(
+            question, data=request.data, partial=partial,
+            context=self.get_serializer_context(request),
+        )
         serializer.is_valid(raise_exception=True)
 
         try:
             with transaction.atomic():
-                serializer.save()
-                cache.delete_pattern('questions:list:*')
+                question = serializer.save()
         except IntegrityError as e:
             question_logger.error(
                 "Savol tahrirlashda xato: %s, question_id: %s",
@@ -426,17 +533,28 @@ class QuestionDetailAPIView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
+        cache.delete_pattern('questions:list:*')
+
+        # Rasm almashtirilgan bo'lsa eskisini diskda qoldirmaymiz.
+        new_image = question.image.name if question.image else None
+        if old_image and old_image != new_image:
+            question.image.storage.delete(old_image)
+
         question_logger.info(
-            "Savol tahrirlandi: id=%s topic_id=%s qiyinlik=%s foydalanuvchi_id=%s",
-            question.id, question.topic_id, question.difficulty, request.user.id,
+            "Savol tahrirlandi: id=%s topic_id=%s qiyinlik=%s rasm=%s foydalanuvchi_id=%s",
+            question.id, question.topic_id, question.difficulty,
+            bool(question.image), request.user.id,
         )
-        return Response(QuestionWriteSerializer(question).data)
+        return Response(
+            QuestionAdminSerializer(question, context=self.get_serializer_context(request)).data
+        )
 
-
-    @extend_schema(responses={204: None})
+    @extend_schema(
+        responses={204: None, 409: detail_response('QuestionDeleteConflict')}, tags=['Catalog']
+    )
     def delete(self, request, pk):
-        from testengine.models import Answer
-        
+        from testengine.models import Answer, SessionQuestion
+
         question = self.get_object(pk)
 
         if Answer.objects.filter(question=question).exists():
@@ -450,12 +568,35 @@ class QuestionDetailAPIView(APIView):
                 status=status.HTTP_409_CONFLICT,
             )
 
+        # Savol hali javob berilmagan bo'lsa ham, davom etayotgan sessiyaga
+        # biriktirilgan bo'lishi mumkin. O'chirsak, o'sha foydalanuvchining
+        # "15 ta savol" i jimgina 14 taga aylanib qoladi.
+        if SessionQuestion.objects.filter(
+            question=question, session__finished_at__isnull=True
+        ).exists():
+            return Response(
+                {
+                    "detail": (
+                        "Bu savol hozir davom etayotgan test sessiyalariga biriktirilgan. "
+                        "Sessiyalar yakunlangandan keyin o'chirishingiz mumkin."
+                    )
+                },
+                status=status.HTTP_409_CONFLICT,
+            )
+
         question_id = question.id
+        image_name = question.image.name if question.image else None
+        storage = question.image.storage if question.image else None
+
         with transaction.atomic():
             question.delete()
-            cache.delete_pattern('questions:list:*')
+
+        cache.delete_pattern('questions:list:*')
+
+        if image_name and storage:
+            storage.delete(image_name)
 
         question_logger.warning(
             "Savol o'chirildi: id=%s foydalanuvchi_id=%s", question_id, request.user.id,
         )
-        return Response({"detail": "Savol muvaffaqiyatli o'chirildi"}, status=status.HTTP_204_NO_CONTENT)
+        return Response(status=status.HTTP_204_NO_CONTENT)

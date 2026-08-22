@@ -1,9 +1,13 @@
-from django.db.models.signals import post_save
-from django.dispatch import receiver
-from django.utils import timezone
+import logging
 
-from account.models import User
-from .models import Announcement, NotificationLog
+from django.db.models.signals import post_save
+from django.db import transaction
+from django.dispatch import receiver
+
+from .models import Announcement
+from .tasks import broadcast_announcement_task
+
+logger = logging.getLogger(__name__)
 
 
 @receiver(post_save, sender=Announcement)
@@ -11,15 +15,17 @@ def broadcast_announcement(sender, instance, created, **kwargs):
     if not created or instance.is_sent:
         return
 
-    text = f'{instance.title}\n{instance.message}' if instance.title else instance.message
-    user_ids = list(User.objects.filter(is_active=True).values_list('id', flat=True))
+    def _dispatch():
+        try:
+            broadcast_announcement_task.delay(instance.pk)
+        except Exception:
+            # Broker ishlamayotgani uchun admin paneldagi saqlash 500 bermasin —
+            # e'lon `is_sent=False` bo'lib qoladi va qayta yuborsa bo'ladi.
+            logger.exception(
+                "E'lonni navbatga qo'yib bo'lmadi (broker ishlamayaptimi?): id=%s",
+                instance.pk,
+            )
 
-    NotificationLog.objects.bulk_create([
-        NotificationLog(user_id=uid, type=NotificationLog.Type.ANNOUNCEMENT, message=text)
-        for uid in user_ids
-    ])
-
-    instance.is_sent = True
-    instance.sent_at = timezone.now()
-    instance.recipients_count = len(user_ids)
-    instance.save(update_fields=['is_sent', 'sent_at', 'recipients_count'])
+    # Tranzaksiya commit bo'lgandan keyin navbatga qo'yamiz — aks holda worker
+    # hali yozilmagan yozuvni o'qishga urinishi mumkin.
+    transaction.on_commit(_dispatch)

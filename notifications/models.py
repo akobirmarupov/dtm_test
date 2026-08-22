@@ -8,6 +8,10 @@ class NotificationLog(BaseModel):
         WELCOME = 'welcome', 'Ro\'yxatdan o\'tish tabrigi'
         RATING_UP = 'rating_up', 'Reyting ko\'tarilishi'
         ANNOUNCEMENT = 'announcement', 'Umumiy e\'lon'
+        SUBSCRIPTION_APPROVED = 'sub_approved', 'Obuna tasdiqlandi'
+        SUBSCRIPTION_REJECTED = 'sub_rejected', 'Obuna arizasi rad etildi'
+        SUBSCRIPTION_EXPIRING = 'sub_expiring', 'Obuna muddati tugayapti'
+        TEST_FINISHED = 'test_finished', 'Test yakunlandi'
 
     user = models.ForeignKey('account.User', on_delete=models.CASCADE, related_name='notification_logs')
     type = models.CharField('Turi', max_length=20, choices=Type.choices)

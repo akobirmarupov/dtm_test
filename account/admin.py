@@ -5,7 +5,7 @@ from unfold.admin import ModelAdmin
 from unfold.forms import AdminPasswordChangeForm, UserChangeForm, UserCreationForm
 
 
-from .models import User
+from .models import Device, User
 
 
 @admin.register(User)
@@ -24,16 +24,19 @@ class UserAdmin(BaseUserAdmin, ModelAdmin):
         "is_staff",
         "is_active",
     )
-    list_filter = ("role", "is_staff", "is_active")
-    search_fields = ("email", "full_name", "google_id")
+    list_filter = ("role", "language", "is_staff", "is_active")
+    search_fields = ("email", "full_name", "google_id", "apple_id", "phone_number")
     ordering = ("-created_at",)
-    readonly_fields = ("google_id", "created_at", "updated_at")
+    readonly_fields = ("google_id", "apple_id", "created_at", "updated_at")
 
     fieldsets = (
         (None, {"fields": ("email", "password")}),
         (
             "Shaxsiy ma'lumot",
-            {"fields": ("full_name", "avatar_url", "google_id")},
+            {"fields": (
+                "full_name", "avatar_url", "language", "phone_number",
+                "telegram_username", "google_id", "apple_id",
+            )},
         ),
         (
             "Loyihaga oid",
@@ -70,3 +73,15 @@ class UserAdmin(BaseUserAdmin, ModelAdmin):
             },
         ),
     )
+
+
+@admin.register(Device)
+class DeviceAdmin(ModelAdmin):
+    list_display = (
+        "id", "user", "platform", "model_name", "os_version",
+        "app_version", "is_active", "last_seen_at",
+    )
+    list_filter = ("platform", "is_active", "language")
+    search_fields = ("user__email", "device_id", "model_name")
+    autocomplete_fields = ("user",)
+    ordering = ("-last_seen_at",)

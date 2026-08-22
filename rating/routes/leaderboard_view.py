@@ -71,7 +71,8 @@ class LeaderboardListAPIView(APIView):
             leaderboard.append({
                 'rank': row.rank,
                 'user_id': row.user_id,
-                'full_name': row.user.full_name or row.user.email,
+                # Email'ni fallback qilib bo'lmaydi — leaderboard hamma uchun ochiq.
+                'full_name': row.user.full_name or 'Anonim',
                 'stars': row.stars,
                 'tests_completed': row.tests_completed,
             })

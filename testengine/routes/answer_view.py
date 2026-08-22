@@ -1,182 +1,242 @@
+"""Javoblar endpointi (savol ID si bo'yicha).
+
+Tartib raqami bo'yicha ishlash qulayroq (`/questions/<order>/answer/`),
+lekin mavjud mijozlar savol ID si bilan ishlaydi — bu endpoint o'shalar
+uchun saqlangan va bir xil qoidalarga bo'ysunadi:
+
+* sessiya yakunlanmaguncha javobni xohlagancha o'zgartirish mumkin;
+* javob to'g'ri yoki noto'g'riligi YAKUNLASHGACHA qaytarilmaydi;
+* yakunlangandan keyin hech narsa o'zgarmaydi.
+"""
+
 from __future__ import annotations
 
-from rest_framework.permissions import IsAuthenticated
-from rest_framework.response import Response
-from rest_framework.views import APIView
-from rest_framework import status
-
-from drf_spectacular.utils import extend_schema
+import logging
 
 from django.db import transaction
 from django.shortcuts import get_object_or_404
-import logging
+from drf_spectacular.utils import extend_schema, inline_serializer
+from rest_framework import serializers, status
+from rest_framework.exceptions import NotFound
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.response import Response
+from rest_framework.views import APIView
 
-from testengine.filters import AnswerFilter
-from testengine.models import TestSession, Answer
-from testengine.routes.serializers import AnswerSerializer, AnswerCreateSerializer, BulkAnswerSerializer
-from common.permissions import IsOwner
+from common.i18n import resolve_language
 from common.pagination import StandardResultsPagination
 from common.throttles import BurstUserRateThrottle
-
+from testengine.filters import AnswerFilter
+from testengine.models import Answer, TestSession
+from testengine.routes.serializers import (
+    AnswerCreateSerializer,
+    AnswerResultSerializer,
+    AnswerSerializer,
+    BulkAnswerSerializer,
+)
+from testengine.services import authorize_questions, save_answer
 
 answer_logger = logging.getLogger('testengine.answer')
 
 
-class AnswerListCreateAPIView(APIView):
+def detail_serializer(name):
+    return inline_serializer(name=name, fields={'detail': serializers.CharField()})
+
+
+def answer_serializer_class(session):
+    """Sessiya yakunlangan bo'lsagina to'g'ri javob ko'rinadi."""
+    return AnswerResultSerializer if session.is_finished else AnswerSerializer
+
+
+class AnswerBaseView(APIView):
     throttle_classes = [BurstUserRateThrottle]
     permission_classes = [IsAuthenticated]
 
-    @extend_schema(responses=AnswerSerializer(many=True))
-    def get(self, request, session_id):
-        session = get_object_or_404(TestSession, id=session_id, user=request.user)
+    def get_session(self, request, session_id):
+        return get_object_or_404(
+            TestSession.objects.select_related('subject'),
+            id=session_id, user=request.user,
+        )
 
-        queryset = session.answers.select_related('question').order_by('-created_at')
-        queryset = AnswerFilter(request.query_params, queryset=queryset).qs
+    def context(self, request):
+        return {'request': request, 'language': resolve_language(request)}
+
+    def finished_response(self, message):
+        return Response({"detail": message}, status=status.HTTP_400_BAD_REQUEST)
+
+
+class AnswerListCreateAPIView(AnswerBaseView):
+    @extend_schema(responses=AnswerSerializer(many=True), tags=['Answer'])
+    def get(self, request, session_id):
+        session = self.get_session(request, session_id)
+
+        queryset = session.answers.select_related('question').order_by('id')
+
+        # `is_correct` bo'yicha filtrlash sessiya yakunlanmaguncha javobni
+        # oshkor qiladi ("is_correct=true bo'lganlari nechta?") — shuning
+        # uchun test davomida bu parametr e'tiborga olinmaydi.
+        params = request.query_params.copy()
+        if not session.is_finished:
+            params.pop('is_correct', None)
+        queryset = AnswerFilter(params, queryset=queryset).qs
 
         paginator = StandardResultsPagination()
         page = paginator.paginate_queryset(queryset, request, view=self)
-        serializer = AnswerSerializer(page, many=True)
-
+        serializer = answer_serializer_class(session)(
+            page, many=True, context=self.context(request)
+        )
         return paginator.get_paginated_response(serializer.data)
 
-    @extend_schema(request=AnswerCreateSerializer, responses=AnswerSerializer)
+    @extend_schema(
+        request=AnswerCreateSerializer,
+        responses={
+            200: AnswerSerializer,
+            201: AnswerSerializer,
+            400: detail_serializer('AnswerCreateError'),
+        },
+        tags=['Answer'],
+        description="Javob berish yoki mavjud javobni o'zgartirish. Javob "
+                    "to'g'ri chiqqani javobda KO'RSATILMAYDI.",
+    )
     def post(self, request, session_id):
-        session = get_object_or_404(TestSession, id=session_id, user=request.user)
+        session = self.get_session(request, session_id)
 
-        if session.finished_at:
-            return Response(
-                {"detail": "Tugagan sessiyaga javob qo'shish yoki o'zgartirish mumkin emas."},
-                status=status.HTTP_400_BAD_REQUEST)
+        if session.is_finished:
+            return self.finished_response(
+                "Tugagan sessiyaga javob qo'shish yoki o'zgartirish mumkin emas."
+            )
 
         serializer = AnswerCreateSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+        question = data['question']
 
-        question = serializer.validated_data['question']
-        selected_option = serializer.validated_data['selected_option']
-        # TODO: `correct_option` — Question modelidagi haqiqiy field nomiga moslang
-        is_correct = (selected_option == question.correct_option)
-
-        try:
-            with transaction.atomic():
-                answer, created = Answer.objects.update_or_create(
-                    session=session,
-                    question=question,
-                    defaults={
-                        'selected_option': selected_option,
-                        'is_correct': is_correct,
-                        'confidence': serializer.validated_data.get('confidence', ''),
-                        'time_spent_seconds': serializer.validated_data.get('time_spent_seconds', 0),
-                    }
-                )
-                answer_logger.info(
-                    "Javob %s: id=%s session_id=%s question_id=%s user_id=%s",
-                    "yaratildi" if created else "yangilandi",
-                    answer.id, session.id, answer.question_id, request.user.id)
-        except Exception as e:
-            answer_logger.error(
-                "Javob saqlashda xatolik: session_id=%s xatolik=%s user_id=%s",
-                session.id, str(e), request.user.id)
+        missing = authorize_questions(session, [question.id])
+        if missing:
             return Response(
-                {"detail": "Javob saqlashda xatolik yuz berdi."},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+                {"detail": "Savol bu sessiyaga tegishli emas."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
-        status_code = status.HTTP_201_CREATED if created else status.HTTP_200_OK
-        return Response(AnswerSerializer(answer).data, status=status_code)
+        with transaction.atomic():
+            answer, created = save_answer(
+                session=session,
+                question=question,
+                selected_option=data['selected_option'],
+                confidence=data.get('confidence', ''),
+                time_spent_seconds=data.get('time_spent_seconds', 0),
+            )
+
+        answer_logger.info(
+            "Javob %s: id=%s session_id=%s question_id=%s user_id=%s",
+            "yaratildi" if created else "yangilandi",
+            answer.id, session.id, answer.question_id, request.user.id,
+        )
+
+        return Response(
+            AnswerSerializer(answer, context=self.context(request)).data,
+            status=status.HTTP_201_CREATED if created else status.HTTP_200_OK,
+        )
 
 
-class AnswerDetailAPIView(APIView):
-    throttle_classes = [BurstUserRateThrottle]
-    permission_classes = [IsAuthenticated]
-
+class AnswerDetailAPIView(AnswerBaseView):
     def get_object(self, session_id, answer_id, user):
         try:
             return Answer.objects.select_related('session', 'question').get(
-                id=answer_id,
-                session_id=session_id,
-                session__user=user
+                id=answer_id, session_id=session_id, session__user=user
             )
         except Answer.DoesNotExist:
-            raise get_object_or_404(Answer)
+            raise NotFound("Javob topilmadi")
 
-    @extend_schema(responses=AnswerSerializer)
+    @extend_schema(responses=AnswerSerializer, tags=['Answer'])
     def get(self, request, session_id, answer_id):
         answer = self.get_object(session_id, answer_id, request.user)
-        return Response(AnswerSerializer(answer).data)
+        return Response(
+            answer_serializer_class(answer.session)(
+                answer, context=self.context(request)
+            ).data
+        )
 
-    @extend_schema(responses={204: None})
+    @extend_schema(
+        responses={204: None, 400: detail_serializer('AnswerDeleteError')},
+        tags=['Answer'],
+        description="Tanlovni bekor qilish — savol yana javobsiz bo'ladi.",
+    )
     def delete(self, request, session_id, answer_id):
         answer = self.get_object(session_id, answer_id, request.user)
 
-        if answer.session.finished_at:
-            return Response(
-                {"detail": "Tugagan sessiyada javoblarni o'chirish mumkin emas."},
-                status=status.HTTP_400_BAD_REQUEST)
+        if answer.session.is_finished:
+            return self.finished_response(
+                "Tugagan sessiyada javoblarni o'chirish mumkin emas."
+            )
 
         answer_logger.info(
             "Javob o'chirildi: id=%s session_id=%s user_id=%s",
-            answer.id, answer.session_id, request.user.id)
-
+            answer.id, answer.session_id, request.user.id,
+        )
         answer.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 
-class AnswerBulkCreateAPIView(APIView):
-    throttle_classes = [BurstUserRateThrottle]
-    permission_classes = [IsAuthenticated]
-
-    @extend_schema(request=BulkAnswerSerializer, responses=AnswerSerializer(many=True))
+class AnswerBulkCreateAPIView(AnswerBaseView):
+    @extend_schema(
+        request=BulkAnswerSerializer,
+        responses={
+            201: AnswerSerializer(many=True),
+            400: inline_serializer(
+                name='AnswerBulkErrorResponse',
+                fields={
+                    'detail': serializers.CharField(),
+                    'question_ids': serializers.ListField(
+                        child=serializers.IntegerField(), required=False
+                    ),
+                },
+            ),
+        },
+        tags=['Answer'],
+        description="Bir nechta javobni bir so'rovda saqlash. Takroriy "
+                    "yuborilsa javoblar yangilanadi, dublikat yaratilmaydi.",
+    )
     def post(self, request, session_id):
-        session = get_object_or_404(TestSession, id=session_id, user=request.user)
+        session = self.get_session(request, session_id)
 
-        if session.finished_at:
-            return Response(
-                {"detail": "Tugagan sessiyaga javob qo'shish mumkin emas."},
-                status=status.HTTP_400_BAD_REQUEST
-            )
+        if session.is_finished:
+            return self.finished_response("Tugagan sessiyaga javob qo'shish mumkin emas.")
 
         serializer = BulkAnswerSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
-        try:
-            with transaction.atomic():
-                answers_data = serializer.validated_data.get('answers', [])
-                saved_answers = []
+        answers_data = serializer.validated_data['answers']
+        question_ids = {item['question'] for item in answers_data}
 
-                for answer_data in answers_data:
-                    question_id = answer_data['question']
-                    selected_option = answer_data['selected_option']
-
-                    # TODO: `correct_option` — Question modelidagi haqiqiy field nomiga moslang
-                    question = get_object_or_404(session.answers.model.question.field.related_model, id=question_id)
-                    is_correct = (selected_option == question.correct_option)
-
-                    answer, created = Answer.objects.update_or_create(
-                        session=session,
-                        question_id=question_id,
-                        defaults={
-                            'selected_option': selected_option,
-                            'is_correct': is_correct,
-                            'confidence': answer_data.get('confidence', ''),
-                            'time_spent_seconds': answer_data.get('time_spent_seconds', 0),
-                        }
-                    )
-                    saved_answers.append(answer)
-
-                answer_logger.info(
-                    "Ko'p javoblar saqlandi: session_id=%s javoblar_soni=%s user_id=%s",
-                    session.id, len(saved_answers), request.user.id
-                )
-        except Exception as e:
-            answer_logger.error(
-                "Ko'p javob saqlashda xatolik: session_id=%s xatolik=%s user_id=%s",
-                session.id, str(e), request.user.id
-            )
+        missing = authorize_questions(session, question_ids)
+        if missing:
             return Response(
-                {"detail": "Javoblar saqlashda xatolik yuz berdi."},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                {"detail": "Savol bu sessiyaga tegishli emas yoki topilmadi.",
+                 "question_ids": sorted(missing)},
+                status=status.HTTP_400_BAD_REQUEST,
             )
+
+        from catalog.models import Question
+        questions = {q.id: q for q in Question.objects.filter(id__in=question_ids)}
+
+        saved = []
+        with transaction.atomic():
+            for item in answers_data:
+                answer, _ = save_answer(
+                    session=session,
+                    question=questions[item['question']],
+                    selected_option=item['selected_option'],
+                    confidence=item.get('confidence', ''),
+                    time_spent_seconds=item.get('time_spent_seconds', 0),
+                )
+                saved.append(answer)
+
+        answer_logger.info(
+            "Ko'p javoblar saqlandi: session_id=%s javoblar_soni=%s user_id=%s",
+            session.id, len(saved), request.user.id,
+        )
 
         return Response(
-            AnswerSerializer(saved_answers, many=True).data,
-            status=status.HTTP_201_CREATED
+            AnswerSerializer(saved, many=True, context=self.context(request)).data,
+            status=status.HTTP_201_CREATED,
         )

@@ -2,10 +2,11 @@ import logging
 
 from django.core.cache import cache
 from django.utils import timezone
+from rest_framework import serializers
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
-from drf_spectacular.utils import extend_schema
+from drf_spectacular.utils import extend_schema, inline_serializer
 
 from common.permissions import IsStudent
 from common.throttles import BurstUserRateThrottle, SustainedUserRateThrottle
@@ -47,7 +48,16 @@ class StreakFreezeAPIView(APIView):
     permission_classes = [IsStudent]
     throttle_classes = [BurstUserRateThrottle, SustainedUserRateThrottle]
 
-    @extend_schema(responses=StreakSerializer)
+    @extend_schema(
+        request=None,
+        responses={
+            200: StreakSerializer,
+            400: inline_serializer(
+                name='StreakFreezeErrorResponse',
+                fields={'detail': serializers.CharField()},
+            ),
+        },
+    )
     def post(self, request):
         streak, _ = Streak.objects.get_or_create(user=request.user)
 

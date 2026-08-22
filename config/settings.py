@@ -1,6 +1,9 @@
 from pathlib import Path
 from datetime import timedelta
+
+from celery.schedules import crontab
 from decouple import config
+import dj_database_url
 
 
 from dotenv import load_dotenv
@@ -17,12 +20,43 @@ SECRET_KEY = config('SECRET_KEY')
 DEBUG = config('DEBUG', default=False, cast=bool)
 
 
-ALLOWED_HOSTS = ['dtm-test.onrender.com', 'localhost', '127.0.0.1']
+def _csv(value):
+    """Vergul bilan ajratilgan env qiymatini ro'yxatga aylantiradi."""
+    return [item.strip() for item in value.split(',') if item.strip()]
+
+
+ALLOWED_HOSTS = config(
+    'ALLOWED_HOSTS',
+    default='dtm-test.onrender.com,localhost,127.0.0.1',
+    cast=_csv,
+)
+
+# Render kabi platformalar host nomini shu env orqali beradi.
+RENDER_EXTERNAL_HOSTNAME = config('RENDER_EXTERNAL_HOSTNAME', default='')
+if RENDER_EXTERNAL_HOSTNAME and RENDER_EXTERNAL_HOSTNAME not in ALLOWED_HOSTS:
+    ALLOWED_HOSTS.append(RENDER_EXTERNAL_HOSTNAME)
 
 
 AUTH_USER_MODEL = "account.User"
+
+# ---------------------------------------------------------------------------
+# Kirish usullari. Android/web -> Google, iPhone/iPad -> Apple ID.
+# ---------------------------------------------------------------------------
 GOOGLE_CLIENT_ID = config("GOOGLE_CLIENT_ID")
-ADMIN_TELEGRAM_LINK = "https://t.me/akobir_ETA"
+
+# Apple "Sign in with Apple" `aud` qiymatlari: iOS bundle id va (bo'lsa) web
+# Services ID. Vergul bilan bir nechtasini berish mumkin. Bo'sh bo'lsa Apple
+# orqali kirish o'chirilgan hisoblanadi va endpoint 400 qaytaradi.
+APPLE_CLIENT_IDS = config('APPLE_CLIENT_IDS', default='', cast=_csv)
+
+# ---------------------------------------------------------------------------
+# Telegram: obuna arizasi admin bilan shu yerda bog'lanadi.
+# ---------------------------------------------------------------------------
+ADMIN_TELEGRAM_LINK = config('ADMIN_TELEGRAM_LINK', default='https://t.me/akobir_ETA')
+# Bot token va chat id sozlansa ariza adminga AVTOMATIK yuboriladi.
+# Sozlanmasa ariza baribir bazada qoladi va admin panelda ko'rinadi.
+TELEGRAM_BOT_TOKEN = config('TELEGRAM_BOT_TOKEN', default='')
+TELEGRAM_ADMIN_CHAT_ID = config('TELEGRAM_ADMIN_CHAT_ID', default='')
 
 
 # Application definition
@@ -57,7 +91,7 @@ EXTERNAL_APPS = [
     'rest_framework.authtoken',
     'rest_framework_simplejwt',
     'rest_framework_simplejwt.token_blacklist',
-    'drf_yasg',
+    'drf_spectacular',
     'corsheaders',
 ]
 
@@ -70,6 +104,8 @@ MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
     'whitenoise.middleware.WhiteNoiseMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
+    # Admin paneli va Django xabarlari foydalanuvchi tilida chiqishi uchun.
+    'django.middleware.locale.LocaleMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
@@ -81,14 +117,68 @@ MIDDLEWARE = [
 
 
 
-#cors
-CORS_ALLOWED_ORIGINS = [
-    "http://localhost:5173",
-    "http://localhost:5174",
+# ---------------------------------------------------------------------------
+# CORS — brauzer, mobil ilova va server-mijozlar uchun.
+#
+# MUHIM: mahalliy (native) mobil ilovalar `Origin` header YUBORMAYDI, shuning
+# uchun CORS ular uchun umuman to'siq emas — iPhone, Samsung yoki boshqa
+# Android qurilma to'g'ridan-to'g'ri ulanaveradi. CORS faqat brauzer va
+# WebView (Capacitor/Cordova/Ionic) mijozlariga tegishli, quyidagi regex'lar
+# aynan o'shalar uchun.
+# ---------------------------------------------------------------------------
+CORS_ALLOWED_ORIGINS = config(
+    'CORS_ALLOWED_ORIGINS',
+    default='http://localhost:5173,http://localhost:5174,http://localhost:3000',
+    cast=_csv,
+)
+
+# Hibrid mobil ilovalar (Capacitor / Ionic / Cordova) va lokal dev portlari.
+CORS_ALLOWED_ORIGIN_REGEXES = [
+    r'^capacitor://.*$',
+    r'^ionic://.*$',
+    r'^http://localhost(:\d+)?$',
+    r'^http://127\.0\.0\.1(:\d+)?$',
+    r'^https://.*\.onrender\.com$',
 ]
 
+# Kerak bo'lsa (masalan public API) env orqali hammaga ochish mumkin.
+CORS_ALLOW_ALL_ORIGINS = config('CORS_ALLOW_ALL_ORIGINS', default=False, cast=bool)
 
 CORS_ALLOW_CREDENTIALS = True
+
+CORS_ALLOW_METHODS = [
+    'DELETE', 'GET', 'OPTIONS', 'PATCH', 'POST', 'PUT',
+]
+
+# `X-Language` — mobil ilova tilni shu header orqali beradi.
+CORS_ALLOW_HEADERS = [
+    'accept',
+    'accept-encoding',
+    'accept-language',
+    'authorization',
+    'content-type',
+    'dnt',
+    'origin',
+    'user-agent',
+    'x-csrftoken',
+    'x-requested-with',
+    'x-language',
+    'x-app-version',
+    'x-device-id',
+    'x-platform',
+]
+
+# Fayl yuklashda (savol rasmi) brauzer shu headerlarni o'qiy olishi kerak.
+CORS_EXPOSE_HEADERS = ['content-disposition', 'content-language']
+
+CORS_PREFLIGHT_MAX_AGE = 86400
+
+# Django 4+ proxy ortida admin/POST so'rovlari uchun majburiy.
+CSRF_TRUSTED_ORIGINS = config(
+    'CSRF_TRUSTED_ORIGINS',
+    default='https://dtm-test.onrender.com',
+    cast=_csv,
+)
 
 
 ROOT_URLCONF = 'config.urls'
@@ -115,16 +205,29 @@ WSGI_APPLICATION = 'config.wsgi.application'
 # https://docs.djangoproject.com/en/6.0/ref/settings/#databases
 
 
-DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.postgresql',
-        'NAME': config('DB_NAME'),
-        'USER': config('DB_USER'),
-        'PASSWORD': config('DB_PASSWORD'),
-        'HOST': config('DB_HOST'),
-        'PORT': config('DB_PORT'),
+# Render bitta DATABASE_URL beradi; lokalda alohida DB_* o'zgaruvchilar ishlatiladi.
+DATABASE_URL = config('DATABASE_URL', default='')
+
+if DATABASE_URL:
+    DATABASES = {
+        'default': dj_database_url.parse(
+            DATABASE_URL,
+            conn_max_age=600,
+            ssl_require=not DEBUG,
+        )
     }
-}
+else:
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.postgresql',
+            'NAME': config('DB_NAME'),
+            'USER': config('DB_USER'),
+            'PASSWORD': config('DB_PASSWORD'),
+            'HOST': config('DB_HOST'),
+            'PORT': config('DB_PORT'),
+            'CONN_MAX_AGE': 600,
+        }
+    }
 
 
 
@@ -147,12 +250,25 @@ AUTH_PASSWORD_VALIDATORS = [
 ]
 
 
-# Internationalization
-# https://docs.djangoproject.com/en/6.0/topics/i18n/
+# ---------------------------------------------------------------------------
+# Ko'p tillilik: o'zbekcha (asosiy), ruscha, inglizcha.
+#
+# Kontent (fan/mavzu/savol/tarif nomlari) modelda alohida ustunlarda
+# saqlanadi — `common.i18n` ga qarang. Bu yerdagi sozlama admin paneli va
+# Django xabarlariga tegishli.
+# ---------------------------------------------------------------------------
+LANGUAGE_CODE = 'uz'
 
-LANGUAGE_CODE = 'en-us'
+LANGUAGES = [
+    ('uz', "O'zbekcha"),
+    ('ru', 'Русский'),
+    ('en', 'English'),
+]
 
-TIME_ZONE = 'UTC'
+LOCALE_PATHS = [BASE_DIR / 'locale']
+
+# Kunlik/haftalik reyting va streak chegaralari mahalliy yarim tunda almashishi kerak.
+TIME_ZONE = 'Asia/Tashkent'
 
 USE_I18N = True
 
@@ -168,16 +284,47 @@ STATICFILES_DIRS = [
     BASE_DIR / 'static',
 ]
 
-STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
+# Django 5.1+ da STATICFILES_STORAGE olib tashlangan — STORAGES ishlatiladi.
+STORAGES = {
+    'default': {
+        'BACKEND': 'django.core.files.storage.FileSystemStorage',
+    },
+    'staticfiles': {
+        'BACKEND': 'whitenoise.storage.CompressedManifestStaticFilesStorage',
+    },
+}
 
 MEDIA_URL = '/media/'
 MEDIA_ROOT = BASE_DIR / 'media'
 
 
+# ---------------------------------------------------------------------------
+# Xavfsizlik. Bu sozlamalar faqat DEBUG=False bo'lganda (ya'ni prodda) yoqiladi,
+# aks holda lokal http://127.0.0.1 development ishlamay qoladi.
+# ---------------------------------------------------------------------------
+SECURE_CONTENT_TYPE_NOSNIFF = True
+X_FRAME_OPTIONS = 'DENY'
+
+if not DEBUG:
+    # Render/nginx proxy ortida original sxemani shu header bildiradi.
+    SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+    SECURE_SSL_REDIRECT = True
+
+    SESSION_COOKIE_SECURE = True
+    CSRF_COOKIE_SECURE = True
+    SESSION_COOKIE_HTTPONLY = True
+
+    SECURE_HSTS_SECONDS = 31536000  # 1 yil
+    SECURE_HSTS_INCLUDE_SUBDOMAINS = True
+    SECURE_HSTS_PRELOAD = True
+
+
+REDIS_URL = config('REDIS_URL', default='redis://127.0.0.1:6379/1')
+
 CACHES = {
     'default': {
         'BACKEND': 'django_redis.cache.RedisCache',
-        'LOCATION': config('REDIS_URL', default='redis://127.0.0.1:6379/1'),
+        'LOCATION': REDIS_URL,
         'OPTIONS': {
             'CLIENT_CLASS': 'django_redis.client.DefaultClient',
         }
@@ -185,22 +332,103 @@ CACHES = {
 }
 
 
+# Celery — og'ir ishlar (e'lon tarqatish, reyting hisobi) so'rovdan tashqarida.
+CELERY_BROKER_URL = config('CELERY_BROKER_URL', default=REDIS_URL)
+CELERY_RESULT_BACKEND = config('CELERY_RESULT_BACKEND', default=REDIS_URL)
+CELERY_ACCEPT_CONTENT = ['json']
+CELERY_TASK_SERIALIZER = 'json'
+CELERY_RESULT_SERIALIZER = 'json'
+CELERY_TIMEZONE = TIME_ZONE
+CELERY_TASK_TIME_LIMIT = 300
+CELERY_TASK_SOFT_TIME_LIMIT = 240
+# Worker ishlamayotgan muhitda (masalan lokal) vazifalar darhol inline bajariladi.
+CELERY_TASK_ALWAYS_EAGER = config('CELERY_TASK_ALWAYS_EAGER', default=False, cast=bool)
+
+# Davriy vazifalar. Ishlashi uchun beat ham kerak:
+#   celery -A config beat --loglevel=info
+CELERY_BEAT_SCHEDULE = {
+    'expire-subscriptions-daily': {
+        'task': 'billing.tasks.expire_subscriptions_task',
+        # Har kuni mahalliy vaqt bilan 00:10 da.
+        'schedule': crontab(hour=0, minute=10),
+    },
+}
+
+
 REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": (
         "rest_framework_simplejwt.authentication.JWTAuthentication",
     ),
+    # Himoyaning ikkinchi qatlami: `permission_classes` yozishni unutgan view
+    # ochiq qolib ketmasin.
+    "DEFAULT_PERMISSION_CLASSES": (
+        "rest_framework.permissions.IsAuthenticated",
+    ),
     "DEFAULT_PAGINATION_CLASS": "common.pagination.StandardResultsPagination",
+    # Kodda 96 ta @extend_schema drf_spectacular uchun yozilgan.
+    "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
+    "DEFAULT_THROTTLE_CLASSES": (
+        "common.throttles.AnonBurstRateThrottle",
+        "common.throttles.SustainedUserRateThrottle",
+    ),
     "DEFAULT_THROTTLE_RATES": {
         'sustained': '1000/day',
         "anon_burst": "10/min",
         "user_burst": "30/min",
         "burst": "60/min",
+        "otp_request": "5/min",
+        "subscription_request": "20/min",
     },
 }
+
+SPECTACULAR_SETTINGS = {
+    'TITLE': 'TestYourself API',
+    'DESCRIPTION': 'TestYourself platformasi API hujjatlari',
+    'VERSION': '1.0.0',
+    'SERVE_INCLUDE_SCHEMA': False,
+}
+
 
 SIMPLE_JWT = {
     "ACCESS_TOKEN_LIFETIME": timedelta(hours=1),
     "REFRESH_TOKEN_LIFETIME": timedelta(days=30),
+}
+
+
+# Kodda 80+ `logger.*` chaqiruvi bor; konfiguratsiyasiz ular prodda yo'qoladi.
+LOG_LEVEL = config('LOG_LEVEL', default='INFO')
+
+LOGGING = {
+    'version': 1,
+    'disable_existing_loggers': False,
+    'formatters': {
+        'verbose': {
+            'format': '[{asctime}] {levelname} {name}: {message}',
+            'style': '{',
+        },
+    },
+    'handlers': {
+        'console': {
+            'class': 'logging.StreamHandler',
+            'formatter': 'verbose',
+        },
+    },
+    'root': {
+        'handlers': ['console'],
+        'level': LOG_LEVEL,
+    },
+    'loggers': {
+        'django': {
+            'handlers': ['console'],
+            'level': LOG_LEVEL,
+            'propagate': False,
+        },
+        'django.request': {
+            'handlers': ['console'],
+            'level': 'ERROR',
+            'propagate': False,
+        },
+    },
 }
 
 

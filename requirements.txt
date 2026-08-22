@@ -20,7 +20,6 @@ django-unfold==0.100.0
 djangorestframework==3.17.1
 djangorestframework_simplejwt==5.5.1
 drf-spectacular==0.30.0
-drf-yasg==1.21.15
 et_xmlfile==2.0.0
 google-auth==2.56.2
 gunicorn==26.0.0
@@ -57,4 +56,3 @@ urllib3==2.7.0
 vine==5.1.0
 wcwidth==0.8.2
 whitenoise==6.12.0
-django-cors-headers==4.9.0

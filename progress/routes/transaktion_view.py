@@ -11,7 +11,8 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
 from django_filters.rest_framework import DjangoFilterBackend
-from drf_spectacular.utils import extend_schema
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import OpenApiParameter, extend_schema
 
 from common.permissions import IsStudent
 from common.pagination import StandardResultsPagination
@@ -35,13 +36,30 @@ LEADERBOARD_CACHE_KEY = 'progress:leaderboard:weekly'
 LEADERBOARD_LIMIT = 50
 
 
+# `XPTransactionFilter` qo'lda qo'llaniladi (bu oddiy APIView, `queryset` atributi yo'q),
+# shuning uchun drf-spectacular filtrlarni o'zi topa olmaydi — quyida qo'lda beriladi.
+XP_TRANSACTION_FILTER_PARAMETERS = [
+    OpenApiParameter('user', OpenApiTypes.INT),
+    OpenApiParameter('source', OpenApiTypes.STR, enum=XPTransaction.Source.values),
+    OpenApiParameter('amount_min', OpenApiTypes.NUMBER),
+    OpenApiParameter('amount_max', OpenApiTypes.NUMBER),
+    OpenApiParameter('created_at', OpenApiTypes.DATE),
+    OpenApiParameter('created_at_after', OpenApiTypes.DATE),
+    OpenApiParameter('created_at_before', OpenApiTypes.DATE),
+]
+
+
 class XPTransactionListAPIView(APIView):
     permission_classes = [IsStudent]
     filter_backends = [DjangoFilterBackend]
     filterset_class = XPTransactionFilter
     pagination_class = StandardResultsPagination
 
-    @extend_schema(responses=XPTransactionSerializer(many=True))
+    @extend_schema(
+        parameters=XP_TRANSACTION_FILTER_PARAMETERS,
+        filters=False,
+        responses=XPTransactionSerializer(many=True),
+    )
     def get(self, request):
         queryset = XPTransaction.objects.filter(
             user=request.user

@@ -7,7 +7,8 @@ from rest_framework.response import Response
 from rest_framework import status
 from rest_framework.generics import get_object_or_404
 from django_filters.rest_framework import DjangoFilterBackend
-from drf_spectacular.utils import extend_schema
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import OpenApiParameter, extend_schema
 
 from common.permissions import IsStudent, IsOwner
 from common.pagination import StandardResultsPagination
@@ -26,13 +27,30 @@ TODAY_CACHE_TTL = 60 * 5
 TODAY_CACHE_KEY = 'progress:reviews:today:user:{user_id}'
 
 
+# `ReviewCardFilter` qo'lda qo'llaniladi (bu oddiy APIView, `queryset` atributi yo'q),
+# shuning uchun drf-spectacular filtrlarni o'zi topa olmaydi — quyida qo'lda beriladi.
+REVIEW_CARD_FILTER_PARAMETERS = [
+    OpenApiParameter('user', OpenApiTypes.INT),
+    OpenApiParameter('question', OpenApiTypes.INT),
+    OpenApiParameter('stability_days_min', OpenApiTypes.NUMBER),
+    OpenApiParameter('stability_days_max', OpenApiTypes.NUMBER),
+    OpenApiParameter('next_review_date', OpenApiTypes.DATE),
+    OpenApiParameter('next_review_date_after', OpenApiTypes.DATE),
+    OpenApiParameter('next_review_date_before', OpenApiTypes.DATE),
+]
+
+
 class  ReviewCardListAPIView(APIView):
     permission_classes = [IsStudent]
     filter_backends = [DjangoFilterBackend]
     filterset_class = ReviewCardFilter
     pagination_class = StandardResultsPagination
 
-    @extend_schema(responses=ReviewCardSerializer(many=True))
+    @extend_schema(
+        parameters=REVIEW_CARD_FILTER_PARAMETERS,
+        filters=False,
+        responses=ReviewCardSerializer(many=True),
+    )
     def get(self, request):
         queryset = (ReviewCard.objects.filter(user=request.user)
                      .select_related('question', 'question__topic', 'question__topic__subject').order_by('next_review_date'))
