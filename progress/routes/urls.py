@@ -1,6 +1,7 @@
 from django.urls import path
 
 from progress.routes.reviewcard_view import ReviewCardListAPIView, ReviewCardTodayAPIView, ReviewCardSubmitAPIview
+from progress.routes.achievement_view import AchievementListAPIView
 from progress.routes.streak_view import StreakDetailAPIView, StreakFreezeAPIView
 from progress.routes.transaktion_view import XPTransactionListAPIView, XPSummaryAPIView, WeeklyLeaderboardAPIView
 
@@ -18,4 +19,7 @@ urlpatterns = [
     path('xp/transactions/', XPTransactionListAPIView.as_view(), name='xp-transaction-list'),
     path('xp/summary/', XPSummaryAPIView.as_view(), name='xp-summary'),
     path('leaderboard/weekly/', WeeklyLeaderboardAPIView.as_view(), name='leaderboard-weekly'),
+
+    # Yutuqlar
+    path('achievements/', AchievementListAPIView.as_view(), name='achievement-list'),
 ]

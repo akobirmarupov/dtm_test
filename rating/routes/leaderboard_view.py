@@ -1,19 +1,19 @@
 import logging
 
 from django.core.cache import cache
-from rest_framework.views import APIView
-from rest_framework.response import Response
-from rest_framework import status
+from drf_spectacular.utils import extend_schema, inline_serializer
+from rest_framework import serializers, status
 from rest_framework.permissions import IsAuthenticated
-from drf_spectacular.utils import extend_schema
+from rest_framework.response import Response
+from rest_framework.views import APIView
 
-from rating.models import Rating
-from rating.services import get_period_dates
+from common.throttles import BurstUserRateThrottle
 from rating.routes.serializers import LeaderboardEntrySerializer
+from rating.services import get_period_dates, leaderboard_rows, user_rank
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger('rating')
 
-LEADERBOARD_CACHE_TTL = 60 * 15
+LEADERBOARD_CACHE_TTL = 60 * 5
 LEADERBOARD_CACHE_KEY = 'rating:leaderboard:{period}'
 LEADERBOARD_LIMIT = 50
 
@@ -21,15 +21,29 @@ VALID_PERIODS = ('daily', 'weekly', 'all_time')
 
 
 class LeaderboardListAPIView(APIView):
-    """
-    GET /rating/leaderboard/{period}/
-
-    Leaderboard modeli hech narsa tomonidan to'ldirilmagani uchun,
-    reyting Rating jadvalidan (u har test yakunida avtomatik yangilanadi) hisoblanadi.
-    """
     permission_classes = [IsAuthenticated]
+    throttle_classes = [BurstUserRateThrottle]
 
-    @extend_schema(responses=LeaderboardEntrySerializer(many=True))
+    @extend_schema(
+        responses={
+            200: inline_serializer(name='LeaderboardResponse', fields={
+                'period': serializers.CharField(),
+                'period_start_date': serializers.DateField(),
+                'period_end_date': serializers.DateField(),
+                'results': LeaderboardEntrySerializer(many=True),
+                'my_position': inline_serializer(name='LeaderboardMyPosition', fields={
+                    'rank': serializers.IntegerField(allow_null=True),
+                    'total_participants': serializers.IntegerField(),
+                    'in_top': serializers.BooleanField(),
+                }),
+            }),
+            400: inline_serializer(
+                name='LeaderboardPeriodError',
+                fields={'detail': serializers.CharField()},
+            ),
+        },
+        tags=['Rating'],
+    )
     def get(self, request, period):
         if period not in VALID_PERIODS:
             return Response(
@@ -38,42 +52,39 @@ class LeaderboardListAPIView(APIView):
             )
 
         cache_key = LEADERBOARD_CACHE_KEY.format(period=period)
-        leaderboard = cache.get(cache_key)
+        entries = cache.get(cache_key)
 
-        if leaderboard is None:
-            leaderboard = self._build_leaderboard(period)
-            cache.set(cache_key, leaderboard, LEADERBOARD_CACHE_TTL)
-            logger.debug('Leaderboard: cache miss, qayta hisoblandi period=%s', period)
-        else:
-            logger.debug('Leaderboard: cache hit period=%s', period)
+        if entries is None:
+            entries = [
+                {
+                    'rank': row.rank,
+                    'user_id': row.user_id,
+                    'full_name': row.user.full_name or 'Anonim',
+                    'avatar_url': row.user.avatar_url or None,
+                    'xp': row.xp,
+                    'stars': row.stars,
+                    'tests_completed': row.tests_completed,
+                }
+                for row in leaderboard_rows(period, LEADERBOARD_LIMIT)
+            ]
+            cache.set(cache_key, entries, LEADERBOARD_CACHE_TTL)
 
-        result = [
+        results = [
             {**entry, 'is_current_user': entry['user_id'] == request.user.id}
-            for entry in leaderboard
+            for entry in entries
         ]
 
-        serializer = LeaderboardEntrySerializer(result, many=True)
-        return Response(serializer.data, status=status.HTTP_200_OK)
-
-    @staticmethod
-    def _build_leaderboard(period):
+        my_rank, total = user_rank(request.user, period)
         start_date, end_date = get_period_dates(period)
-        rows = (
-            Rating.objects
-            .filter(period=period, period_start_date=start_date, period_end_date=end_date)
-            .exclude(rank=None)
-            .select_related('user')
-            .order_by('rank')[:LEADERBOARD_LIMIT]
-        )
 
-        leaderboard = []
-        for row in rows:
-            leaderboard.append({
-                'rank': row.rank,
-                'user_id': row.user_id,
-                # Email'ni fallback qilib bo'lmaydi — leaderboard hamma uchun ochiq.
-                'full_name': row.user.full_name or 'Anonim',
-                'stars': row.stars,
-                'tests_completed': row.tests_completed,
-            })
-        return leaderboard
+        return Response({
+            'period': period,
+            'period_start_date': start_date,
+            'period_end_date': end_date,
+            'results': LeaderboardEntrySerializer(results, many=True).data,
+            'my_position': {
+                'rank': my_rank,
+                'total_participants': total or 0,
+                'in_top': bool(my_rank and my_rank <= LEADERBOARD_LIMIT),
+            },
+        })

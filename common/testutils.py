@@ -2,7 +2,7 @@
 
 from django.contrib.auth import get_user_model
 
-from catalog.models import Question, Subject, Topic
+from catalog.models import Grade, Question, Subject, Topic
 from common.models import Role
 
 User = get_user_model()
@@ -10,6 +10,39 @@ User = get_user_model()
 
 def make_user(email, role=Role.STUDENT, **extra):
     return User.objects.create_user(email=email, role=role, **extra)
+
+
+def make_grade(subject, name='7-sinf', order=0):
+    """Fan ichida sinf/kitob."""
+    grade, _ = Grade.objects.get_or_create(
+        subject=subject, name=name, defaults={'order': order}
+    )
+    return grade
+
+
+def make_topic(subject_name='Matematika', grade_name='7-sinf', topic_name='Algebra'):
+    """Fan -> Sinf -> Mavzu zanjiri."""
+    subject, _ = Subject.objects.get_or_create(name=subject_name)
+    grade = make_grade(subject, grade_name)
+    topic, _ = Topic.objects.get_or_create(grade=grade, name=topic_name)
+    return topic
+
+
+def make_topic_questions(count, subject_name='Matematika', grade_name='7-sinf',
+                         topic_name='Algebra', correct='A'):
+    """Aniq bir mavzuga `count` ta savol — tier va limit testlari uchun."""
+    topic = make_topic(subject_name, grade_name, topic_name)
+    questions = [
+        Question.objects.create(
+            topic=topic,
+            text=f'{topic_name} savoli #{index}',
+            options={'A': '1', 'B': '2', 'C': '3', 'D': '4'},
+            correct_option=correct,
+        )
+        for index in range(1, count + 1)
+    ]
+    topic.refresh_from_db()
+    return topic, questions
 
 
 def make_question(subject_name='Matematika', correct='A', topic_name='Algebra', **extra):

@@ -10,6 +10,20 @@ from testengine.routes.testresult_view import (
     TestResultDetailAPIView,
     TestResultListAPIView,
 )
+from testengine.routes.guest_view import (
+    GuestStartTestAPIView,
+    GuestSubmitTestAPIView,
+    GuestTopicsAPIView,
+)
+from testengine.routes.mistake_view import (
+    MistakeListAPIView,
+    MistakeStartTestAPIView,
+)
+from testengine.routes.topic_test_view import (
+    MyTestLimitsAPIView,
+    TopicAvailableCountsAPIView,
+    TopicStartTestAPIView,
+)
 from testengine.routes.testsession_view import (
     SessionQuestionDetailAPIView,
     SessionQuestionListAPIView,
@@ -25,6 +39,28 @@ from testengine.routes.testsession_view import (
 app_name = "testengine"
 
 urlpatterns = [
+    # --- Mavzu bo'yicha test: son tanlash va boshlash ---------------------
+    path(
+        "topics/<int:topic_id>/available-counts/",
+        TopicAvailableCountsAPIView.as_view(),
+        name="topic-available-counts",
+    ),
+    path(
+        "topics/<int:topic_id>/start-test/",
+        TopicStartTestAPIView.as_view(),
+        name="topic-start-test",
+    ),
+    path("my-limits/", MyTestLimitsAPIView.as_view(), name="my-limits"),
+
+    # --- Xatolar banki ----------------------------------------------------
+    path("mistakes/", MistakeListAPIView.as_view(), name="mistake-list"),
+    path("mistakes/start-test/", MistakeStartTestAPIView.as_view(), name="mistake-start-test"),
+
+    # --- Guest (ro'yxatdan o'tmagan) oqimi --------------------------------
+    path("guest/topics/", GuestTopicsAPIView.as_view(), name="guest-topics"),
+    path("guest/start/", GuestStartTestAPIView.as_view(), name="guest-start"),
+    path("guest/submit/", GuestSubmitTestAPIView.as_view(), name="guest-submit"),
+
     # Sessiya
     path("sessions/", TestSessionListCreateAPIView.as_view(), name="session-list-create"),
     path("sessions/<int:pk>/", TestSessionDetailAPIView.as_view(), name="session-detail"),

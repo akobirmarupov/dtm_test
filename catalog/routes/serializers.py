@@ -2,13 +2,9 @@ import re
 
 from rest_framework import serializers
 
-from catalog.models import Question, Subject, Topic
-from common.i18n import (
-    LANGUAGE_SUFFIX,
-    LanguageContextMixin,
-    translated,
-    translations_of,
-)
+from catalog.models import Grade, Question, Subject, Topic
+from common.i18n import LANGUAGE_SUFFIX,LanguageContextMixin,translated,translations_of
+
 
 
 OPTION_KEY_PATTERN = re.compile(r"^[A-Z]$")
@@ -47,15 +43,18 @@ def validate_options_payload(value, field_label="Variantlar"):
 # Subject
 # ---------------------------------------------------------------------------
 class SubjectSerializer(LanguageContextMixin, serializers.ModelSerializer):
-    """O'qish uchun. `name` — so'rov tiliga mos tarjima; tarjima yo'q bo'lsa
-    o'zbekchasi qaytadi."""
-
     name = serializers.SerializerMethodField()
     translations = serializers.SerializerMethodField()
+    grade_count = serializers.SerializerMethodField()
+    topic_count = serializers.SerializerMethodField()
+    has_test = serializers.SerializerMethodField()
 
     class Meta:
         model = Subject
-        fields = ["id", "name", "translations", "created_at", "updated_at"]
+        fields = [
+            "id", "name", "translations", "grade_count", "topic_count",
+            "has_test", "created_at", "updated_at",
+        ]
         read_only_fields = fields
 
     def get_name(self, obj) -> str:
@@ -64,10 +63,101 @@ class SubjectSerializer(LanguageContextMixin, serializers.ModelSerializer):
     def get_translations(self, obj) -> dict:
         return translations_of(obj, 'name')
 
+    def get_grade_count(self, obj) -> int:
+        value = getattr(obj, 'active_grade_count', None)
+        if value is not None:
+            return value
+        return obj.grades.filter(is_active=True).count()
+
+    def get_topic_count(self, obj) -> int:
+        value = getattr(obj, 'active_topic_count', None)
+        if value is not None:
+            return value
+        return obj.topics.filter(is_active=True).count()
+
+    def get_has_test(self, obj) -> bool:
+        """Shu fanda test ochish mumkin bo'lgan hech bo'lmasa bitta mavzu
+        bormi. Savollar SONI ATAYIN qaytarilmaydi — foydalanuvchi baza
+        hajmini bilmasligi kerak."""
+        from testengine.models import MIN_TIER
+        value = getattr(obj, 'testable_topic_count', None)
+        if value is not None:
+            return value > 0
+        return obj.topics.filter(
+            is_active=True, available_question_count__gte=MIN_TIER
+        ).exists()
+
+
+# ---------------------------------------------------------------------------
+# Grade (Sinf / Kitob)
+# ---------------------------------------------------------------------------
+class GradeSerializer(LanguageContextMixin, serializers.ModelSerializer):
+    name = serializers.SerializerMethodField()
+    subject_name = serializers.SerializerMethodField()
+    translations = serializers.SerializerMethodField()
+    topic_count = serializers.SerializerMethodField()
+    has_test = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Grade
+        fields = [
+            "id", "subject", "subject_name", "name", "translations", "order",
+            "is_active", "topic_count", "has_test", "created_at", "updated_at",
+        ]
+        read_only_fields = fields
+
+    def get_name(self, obj) -> str:
+        return translated(obj, 'name', self.language)
+
+    def get_subject_name(self, obj) -> str:
+        return translated(obj.subject, 'name', self.language)
+
+    def get_translations(self, obj) -> dict:
+        return translations_of(obj, 'name')
+
+    def get_topic_count(self, obj) -> int:
+        value = getattr(obj, 'active_topic_count', None)
+        if value is not None:
+            return value
+        return obj.topics.filter(is_active=True).count()
+
+    def get_has_test(self, obj) -> bool:
+        from testengine.models import MIN_TIER
+        value = getattr(obj, 'testable_topic_count', None)
+        if value is not None:
+            return value > 0
+        return obj.topics.filter(
+            is_active=True, available_question_count__gte=MIN_TIER
+        ).exists()
+
+
+class GradeWriteSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Grade
+        fields = ["id", "subject", "name", "name_ru", "name_en", "order", "is_active"]
+        read_only_fields = ["id"]
+
+    def validate_name(self, value):
+        value = (value or '').strip()
+        if not value:
+            raise serializers.ValidationError("Sinf/kitob nomi bo'sh bo'lishi mumkin emas.")
+        return value
+
+    def validate(self, attrs):
+        subject = attrs.get("subject", getattr(self.instance, "subject", None))
+        name = attrs.get("name", getattr(self.instance, "name", None))
+        if subject and name:
+            qs = Grade.objects.filter(subject=subject, name__iexact=name.strip())
+            if self.instance:
+                qs = qs.exclude(pk=self.instance.pk)
+            if qs.exists():
+                raise serializers.ValidationError(
+                    {"name": "Bu fan ichida shu nomli sinf/kitob allaqachon mavjud."}
+                )
+        return attrs
+
 
 class SubjectWriteSerializer(serializers.ModelSerializer):
-    """Yaratish/tahrirlash. `name` — o'zbekcha (majburiy), qolgan tillar ixtiyoriy."""
-
     class Meta:
         model = Subject
         fields = ["id", "name", "name_ru", "name_en"]
@@ -97,13 +187,18 @@ class SubjectWriteSerializer(serializers.ModelSerializer):
 class TopicSerializer(LanguageContextMixin, serializers.ModelSerializer):
     name = serializers.SerializerMethodField()
     subject_name = serializers.SerializerMethodField()
+    grade_name = serializers.SerializerMethodField()
     translations = serializers.SerializerMethodField()
+    has_test = serializers.SerializerMethodField()
+    available_counts = serializers.SerializerMethodField()
+    question_count = serializers.SerializerMethodField()
 
     class Meta:
         model = Topic
         fields = [
-            "id", "subject", "subject_name", "name", "translations",
-            "created_at", "updated_at",
+            "id", "subject", "subject_name", "grade", "grade_name", "name",
+            "translations", "order", "is_active", "has_test",
+            "available_counts", "question_count", "created_at", "updated_at",
         ]
         read_only_fields = fields
 
@@ -113,15 +208,49 @@ class TopicSerializer(LanguageContextMixin, serializers.ModelSerializer):
     def get_subject_name(self, obj) -> str:
         return translated(obj.subject, 'name', self.language)
 
+    def get_grade_name(self, obj) -> str | None:
+        return translated(obj.grade, 'name', self.language) if obj.grade_id else None
+
     def get_translations(self, obj) -> dict:
         return translations_of(obj, 'name')
 
+    def get_has_test(self, obj) -> bool:
+        from testengine.models import MIN_TIER
+        return obj.is_active and obj.available_question_count >= MIN_TIER
+
+    def get_available_counts(self, obj) -> list[int]:
+        """Shu foydalanuvchi tanlay oladigan savol sonlari."""
+        from billing.entitlements import entitlements_for_request
+        from testengine.access import tiers_for
+
+        request = self.context.get('request')
+        entitlements = self.context.get('entitlements')
+        if entitlements is None and request is not None:
+            entitlements = entitlements_for_request(request)
+        if entitlements is None:
+            from testengine.access import get_available_tiers
+            return get_available_tiers(obj.available_question_count)
+        return tiers_for(entitlements, obj.available_question_count)
+
+    def get_question_count(self, obj) -> int | None:
+        from common.models import Role
+        request = self.context.get('request')
+        user = getattr(request, 'user', None)
+        if getattr(user, 'role', None) in (Role.MENTOR, Role.ADMIN):
+            return obj.available_question_count
+        return None
+
 
 class TopicWriteSerializer(serializers.ModelSerializer):
+    subject = serializers.PrimaryKeyRelatedField(read_only=True)
+
     class Meta:
         model = Topic
-        fields = ["id", "subject", "name", "name_ru", "name_en"]
-        read_only_fields = ["id"]
+        fields = [
+            "id", "grade", "subject", "name", "name_ru", "name_en",
+            "order", "is_active",
+        ]
+        read_only_fields = ["id", "subject"]
 
     def validate_name(self, value):
         value = value.strip()
@@ -130,15 +259,19 @@ class TopicWriteSerializer(serializers.ModelSerializer):
         return value
 
     def validate(self, attrs):
-        subject = attrs.get("subject", getattr(self.instance, "subject", None))
+        grade = attrs.get("grade", getattr(self.instance, "grade", None))
         name = attrs.get("name", getattr(self.instance, "name", None))
-        if subject and name:
-            qs = Topic.objects.filter(subject=subject, name__iexact=name.strip())
+        if grade is None:
+            raise serializers.ValidationError(
+                {"grade": "Mavzu qaysi sinf/kitobga tegishli ekanini ko'rsating."}
+            )
+        if name:
+            qs = Topic.objects.filter(grade=grade, name__iexact=name.strip())
             if self.instance:
                 qs = qs.exclude(pk=self.instance.pk)
             if qs.exists():
                 raise serializers.ValidationError(
-                    {"name": "Bu fan ichida shu nomli mavzu allaqachon mavjud."}
+                    {"name": "Bu sinf/kitob ichida shu nomli mavzu allaqachon mavjud."}
                 )
         return attrs
 
@@ -147,8 +280,6 @@ class TopicWriteSerializer(serializers.ModelSerializer):
 # Question
 # ---------------------------------------------------------------------------
 class QuestionSerializer(LanguageContextMixin, serializers.ModelSerializer):
-    """Talaba ko'radigan savol. `correct_option` ATAYIN yo'q."""
-
     text = serializers.SerializerMethodField()
     options = serializers.SerializerMethodField()
     topic_name = serializers.SerializerMethodField()
@@ -179,14 +310,17 @@ class QuestionSerializer(LanguageContextMixin, serializers.ModelSerializer):
         return bool(obj.image)
 
 
-class QuestionWriteSerializer(serializers.ModelSerializer):
-    """Mentor/admin uchun: barcha tillar, rasm va to'g'ri javob."""
+class FormSafeBooleanField(serializers.BooleanField):
+    default_empty_html = serializers.empty
 
+
+class QuestionWriteSerializer(serializers.ModelSerializer):
+    is_active = FormSafeBooleanField(required=False)
     image = serializers.ImageField(required=False, allow_null=True)
     image_url = serializers.SerializerMethodField()
+    explanation_image = serializers.ImageField(required=False, allow_null=True)
+    explanation_image_url = serializers.SerializerMethodField()
 
-    # Savol rasmi diagramma/grafik — bir necha yuz kilobayt yetadi. Chegara
-    # bo'lmasa bitta savol serverdagi butun diskni yeb qo'yishi mumkin.
     MAX_IMAGE_BYTES = 5 * 1024 * 1024
 
     class Meta:
@@ -196,11 +330,42 @@ class QuestionWriteSerializer(serializers.ModelSerializer):
             "options", "options_ru", "options_en",
             "image", "image_url", "image_caption",
             "correct_option", "difficulty",
+            "explanation", "explanation_ru", "explanation_en",
+            "explanation_image", "explanation_image_url", "hint",
+            "status", "is_active", "source", "source_year",
         ]
-        read_only_fields = ["id", "image_url"]
+        read_only_fields = ["id", "image_url", "explanation_image_url"]
 
     def get_image_url(self, obj) -> str | None:
         return absolute_image_url(obj, self.context.get('request'))
+
+    def get_explanation_image_url(self, obj) -> str | None:
+        return absolute_file_url(obj.explanation_image, self.context.get('request'))
+
+    def validate_explanation_image(self, value):
+        if value in (None, ''):
+            return None
+        if value.size > self.MAX_IMAGE_BYTES:
+            raise serializers.ValidationError(
+                f"Rasm hajmi {self.MAX_IMAGE_BYTES // (1024 * 1024)} MB dan "
+                f"oshmasligi kerak."
+            )
+        return value
+
+    def validate_source_year(self, value):
+        if value is None:
+            return value
+        if not (1990 <= value <= 2100):
+            raise serializers.ValidationError("Yil 1990–2100 oralig'ida bo'lishi kerak.")
+        return value
+
+    def create(self, validated_data):
+
+        request = self.context.get('request')
+        user = getattr(request, 'user', None)
+        if user is not None and getattr(user, 'is_authenticated', False):
+            validated_data.setdefault('author', user)
+        return super().create(validated_data)
 
     def validate_text(self, value):
         value = value.strip()
@@ -249,9 +414,6 @@ class QuestionWriteSerializer(serializers.ModelSerializer):
                 {"correct_option": "To'g'ri javob variantlar ro'yxatida mavjud emas."}
             )
 
-        # Tarjima qilingan variantlar kalitlari asosiy variantlar bilan bir xil
-        # bo'lishi shart — aks holda ruscha ko'rinishda 'C' varianti yo'qolib,
-        # foydalanuvchi tanlagan javob bazadagi javobga to'g'ri kelmay qoladi.
         for field, label in (("options_ru", "Ruscha"), ("options_en", "Inglizcha")):
             translated_value = attrs.get(field, getattr(self.instance, field, None))
             if translated_value and options and set(translated_value) != set(options):
@@ -264,30 +426,36 @@ class QuestionWriteSerializer(serializers.ModelSerializer):
 
 
 class QuestionAdminSerializer(QuestionWriteSerializer):
-    """Ro'yxatda qaytariladigan to'liq ko'rinish (mentor/admin)."""
-
     topic_name = serializers.CharField(source='topic.name', read_only=True)
     subject_id = serializers.IntegerField(source='topic.subject_id', read_only=True)
+    grade_id = serializers.IntegerField(source='topic.grade_id', read_only=True)
     has_image = serializers.SerializerMethodField()
+    has_explanation = serializers.SerializerMethodField()
+    status_display = serializers.CharField(source='get_status_display', read_only=True)
+    p_value = serializers.FloatField(read_only=True)
+    observed_difficulty = serializers.IntegerField(read_only=True)
+    avg_time_seconds = serializers.IntegerField(read_only=True)
+    author_email = serializers.CharField(source='author.email', read_only=True, default=None)
 
     class Meta(QuestionWriteSerializer.Meta):
         fields = QuestionWriteSerializer.Meta.fields + [
-            "topic_name", "subject_id", "has_image", "created_at", "updated_at",
+            "topic_name", "subject_id", "grade_id", "has_image",
+            "has_explanation", "status_display", "times_answered",
+            "times_correct", "p_value", "observed_difficulty",
+            "avg_time_seconds", "author_email", "created_at", "updated_at",
         ]
 
     def get_has_image(self, obj) -> bool:
         return bool(obj.image)
+
+    def get_has_explanation(self, obj) -> bool:
+        return bool(obj.explanation or obj.explanation_image)
 
 
 # ---------------------------------------------------------------------------
 # Yordamchilar
 # ---------------------------------------------------------------------------
 def translated_options(question, language) -> dict:
-    """Variantlarni tanlangan tilda qaytaradi.
-
-    Tarjima yo'q yoki kalitlari mos kelmasa asosiy variantlar qaytadi —
-    javob kalitlari (A/B/C) har doim bir xil bo'lib qolishi shart.
-    """
     base = question.options if isinstance(question.options, dict) else {}
     suffix = LANGUAGE_SUFFIX.get(language, '')
     if not suffix:
@@ -299,9 +467,11 @@ def translated_options(question, language) -> dict:
     return base
 
 
-def absolute_image_url(question, request) -> str | None:
-    """Rasmning to'liq URL manzili. Rasm yuklanmagan bo'lsa None."""
-    if not question.image:
+def absolute_file_url(file_field, request) -> str | None:
+    if not file_field:
         return None
-    url = question.image.url
+    url = file_field.url
     return request.build_absolute_uri(url) if request else url
+
+def absolute_image_url(question, request) -> str | None:
+    return absolute_file_url(question.image, request)

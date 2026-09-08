@@ -1,6 +1,9 @@
 from django.contrib import admin
 from django.utils.html import format_html
-from .models import Rating, RatingHistory, TopicRating, SubjectRating, Leaderboard
+from .models import (
+    Leaderboard, League, LeagueMembership,
+    Rating, RatingHistory, SubjectRating, TopicRating,
+)
 
 
 @admin.register(Rating)
@@ -9,6 +12,7 @@ class RatingAdmin(admin.ModelAdmin):
         'user_email', 
         'period_display', 
         'stars_display', 
+        'xp',
         'tests_completed', 
         'accuracy_percentage_display',
         'rank',
@@ -16,17 +20,26 @@ class RatingAdmin(admin.ModelAdmin):
     )
     list_filter = ('period', 'period_start_date', 'created_at')
     search_fields = ('user__email', 'user__full_name')
-    readonly_fields = ('created_at', 'updated_at', 'last_updated', 'xp_equivalent')
+    readonly_fields = (
+        'created_at', 'updated_at', 'last_updated', 'rank',
+        'earned_points', 'possible_points',
+    )
     
     fieldsets = (
         ('Foydalanuvchi', {
             'fields': ('user', 'period')
         }),
         ('Reytinglar', {
-            'fields': ('stars', 'xp_equivalent', 'rank')
+            'fields': ('stars', 'xp', 'rank'),
+            'description': "Leaderboard XP bo'yicha saralanadi, ⭐ esa shaxsiy daraja. "
+                           "`rank` ni qo'lda tahrirlash mumkin emas — u "
+                           "`rebuild_leaderboard()` da butun ro'yxat uchun hisoblanadi.",
         }),
         ('Statistika', {
-            'fields': ('tests_completed', 'correct_answers', 'incorrect_answers')
+            'fields': (
+                'tests_completed', 'correct_answers', 'incorrect_answers',
+                'unanswered_answers', 'earned_points', 'possible_points',
+            )
         }),
         ('Vaqt ma\'lumotlari', {
             'fields': ('period_start_date', 'period_end_date', 'last_updated', 'created_at', 'updated_at'),
@@ -275,30 +288,40 @@ class SubjectRatingAdmin(admin.ModelAdmin):
 
 @admin.register(Leaderboard)
 class LeaderboardAdmin(admin.ModelAdmin):
+    """Leaderboardning tayyor kesimi. Bu jadvalga `rebuild_leaderboard()`
+    yozadi — qo'lda tahrirlash ma'nosiz, keyingi hisobda qayta yoziladi."""
+
     list_display = (
         'rank_display',
         'user_email',
         'period_display',
+        'xp',
         'stars_display',
         'tests_completed',
-        'date'
+        'period_start_date',
     )
-    list_filter = ('period', 'date')
+    list_filter = ('period', 'period_start_date')
     search_fields = ('user__email', 'user__full_name')
-    readonly_fields = ('created_at', 'updated_at', 'last_updated', 'date')
-    
+    readonly_fields = (
+        'period', 'period_start_date', 'period_end_date', 'rank', 'user',
+        'xp', 'stars', 'tests_completed', 'generated_at', 'created_at', 'updated_at',
+    )
+    ordering = ('period', 'rank')
+
     fieldsets = (
-        ('Foydalanuvchi', {
-            'fields': ('user', 'period')
-        }),
-        ('Joylanishi va Reytingi', {
-            'fields': ('rank', 'stars', 'tests_completed')
-        }),
-        ('Vaqt', {
-            'fields': ('date', 'last_updated', 'created_at', 'updated_at'),
-            'classes': ('collapse',)
+        ('Qator', {'fields': ('period', 'rank', 'user')}),
+        ('Ko\'rsatkichlar', {'fields': ('xp', 'stars', 'tests_completed')}),
+        ('Davr', {
+            'fields': (
+                'period_start_date', 'period_end_date', 'generated_at',
+                'created_at', 'updated_at',
+            ),
+            'classes': ('collapse',),
         }),
     )
+
+    def has_add_permission(self, request):
+        return False
     
     def rank_display(self, obj):
         medals = {1: '🥇', 2: '🥈', 3: '🥉'}
@@ -328,5 +351,29 @@ class LeaderboardAdmin(admin.ModelAdmin):
         stars = '⭐' * int(obj.stars)
         return f'{obj.stars:.1f} {stars}'
     stars_display.short_description = '⭐'
-    
-    ordering = ['period', 'date', 'rank']
+
+
+@admin.register(League)
+class LeagueAdmin(admin.ModelAdmin):
+    """Haftalik liga guruhi (30 kishilik)."""
+
+    list_display = ('__str__', 'tier', 'group_number', 'period_start_date',
+                    'member_count', 'is_closed')
+    list_filter = ('tier', 'is_closed', 'period_start_date')
+    search_fields = ('group_number', 'period_start_date')
+    ordering = ('-period_start_date', '-tier', 'group_number')
+    readonly_fields = ('created_at', 'updated_at')
+
+    @admin.display(description="A'zolar")
+    def member_count(self, obj):
+        return obj.memberships.count()
+
+
+@admin.register(LeagueMembership)
+class LeagueMembershipAdmin(admin.ModelAdmin):
+    list_display = ('user', 'league', 'xp', 'rank', 'outcome')
+    list_filter = ('outcome', 'league__tier', 'league__period_start_date')
+    search_fields = ('user__email', 'user__full_name')
+    autocomplete_fields = ('user', 'league')
+    ordering = ('-league__period_start_date', 'league', '-xp')
+    readonly_fields = ('rank', 'outcome', 'created_at', 'updated_at')

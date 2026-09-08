@@ -53,6 +53,22 @@ python -c "from django.core.management.utils import get_random_secret_key as g; 
 > qo'shtirnoqsiz yozing va tarkibida `#` bo'lmasligiga ishonch hosil qiling,
 > aks holda qiymat kesilib qoladi.
 
+## Boshlang'ich ma'lumot
+
+```bash
+python manage.py setup_plans     # Free / Pro-Basic / Pro-Full tariflari
+```
+
+Tariflarning narxi va cheklovlari shundan keyin **admin panelidan**
+boshqariladi — kodga qaytish shart emas.
+
+Kontent bulk import qilingandan keyin (`bulk_create`, SQL, `loaddata` —
+bular signal chaqirmaydi):
+
+```bash
+python manage.py recount_questions   # mavzudagi savol sanog'ini qayta hisoblash
+```
+
 ## Testlar
 
 ```bash
@@ -60,7 +76,13 @@ python manage.py test
 ```
 
 Testlar ishlashi uchun PostgreSQL va Redis ishlab turishi kerak (kesh va
-throttling shularga bog'liq).
+throttling shularga bog'liq). Test keshi `KEY_PREFIX='test'` bilan ishchi
+keshdan ajratilgan va har ishga tushishda tozalanadi
+(`common/test_runner.py`) — shu tufayli testlar ishchi Redis'ga tegmaydi va
+eski throttle hisoblari sababli tasodifiy yiqilmaydi.
+
+Har bir push va PR da testlar avtomatik ishlaydi:
+[`.github/workflows/tests.yml`](.github/workflows/tests.yml).
 
 ## Deploy (Render)
 
@@ -110,12 +132,16 @@ Xavfsizlik ogohlantirishlari (`security.W*`) chiqmasligi kerak.
 
 Prodda (`DEBUG=False`) bu sahifalar **faqat admin** uchun ochiq.
 
+Test oqimi (sinf tanlash, savol soni bosqichlari, guest rejimi, kunlik
+limit, yechim izohlari) — batafsil:
+[`documentation/API_TEST_FLOW.md`](documentation/API_TEST_FLOW.md).
+
 ## Loyiha tuzilishi
 
 | App | Vazifasi |
 |---|---|
 | `account` | Foydalanuvchilar, Google OAuth, JWT |
-| `catalog` | Fanlar, mavzular, savollar |
+| `catalog` | Fanlar, **sinflar/kitoblar**, mavzular, savollar |
 | `testengine` | Test sessiyalari, javoblar, natijalar |
 | `progress` | Takrorlash kartalari, streak, XP |
 | `rating` | Reytinglar va leaderboard |
@@ -123,6 +149,19 @@ Prodda (`DEBUG=False`) bu sahifalar **faqat admin** uchun ochiq.
 | `notifications` | Bildirishnomalar va e'lonlar |
 | `dashboard` | Mentor paneli va analitika |
 | `common` | Umumiy model, permission, pagination, throttle |
+
+## Kontent ierarxiyasi
+
+```
+Fan (Subject)
+ └─ Sinf / Kitob (Grade)      ← nom erkin matn: «7-sinf», «Milliy sertifikat uchun»
+     └─ Mavzu (Topic)
+         └─ Savol (Question)
+```
+
+`Topic.subject` avtomatik to'ldiriladi (`grade.subject` dan) va
+denormalizatsiya sifatida saqlanadi — `topic__subject` bo'yicha issiq
+filtrlar bitta JOIN bilan ishlashi uchun.
 
 ## Asosiy oqimlar
 

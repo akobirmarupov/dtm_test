@@ -12,24 +12,20 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from catalog.filters import QuestionFilter, SubjectFilter, TopicFilter
-from catalog.models import Question, Subject, Topic
+from catalog.filters import GradeFilter, QuestionFilter, SubjectFilter, TopicFilter
+from catalog.models import Grade, Question, Subject, Topic
 from catalog.routes.serializers import (
-    QuestionAdminSerializer,
-    QuestionSerializer,
-    QuestionWriteSerializer,
-    SubjectSerializer,
-    SubjectWriteSerializer,
-    TopicSerializer,
-    TopicWriteSerializer,
-)
+    GradeSerializer,GradeWriteSerializer,QuestionAdminSerializer,QuestionSerializer,
+    QuestionWriteSerializer,SubjectSerializer,SubjectWriteSerializer,TopicSerializer,TopicWriteSerializer,)
 from common.i18n import SUPPORTED_LANGUAGES, resolve_language
 from common.models import Role
 from common.pagination import StandardResultsPagination
 from common.permissions import IsMentorOrAdmin
 from common.throttles import BurstUserRateThrottle
 
+
 subject_logger = logging.getLogger('subject')
+grade_logger = logging.getLogger('grade')
 topic_logger = logging.getLogger('topic')
 question_logger = logging.getLogger('question')
 
@@ -39,7 +35,6 @@ CACHE_DURATION = {
     'question_list': 60 * 2,
 }
 
-# Har bir ro'yxat endpointida ko'rsatiladigan til parametri.
 LANGUAGE_PARAMETER = OpenApiParameter(
     'lang',
     str,
@@ -50,21 +45,27 @@ LANGUAGE_PARAMETER = OpenApiParameter(
 
 
 def detail_response(name):
-    """`{"detail": "..."}` javobini sxemada to'g'ri ko'rsatish uchun."""
     from drf_spectacular.utils import inline_serializer
     return inline_serializer(name=name, fields={'detail': serializers.CharField()})
 
 
 class LanguageAwareAPIView(APIView):
-    """Serializerlarga `request` va `language` ni yetkazadigan asos."""
-
     def get_serializer_context(self, request):
-        return {'request': request, 'language': resolve_language(request)}
+        from billing.entitlements import entitlements_for_request
+        return {
+            'request': request,
+            'language': resolve_language(request),
+            'entitlements': entitlements_for_request(request),
+        }
+
+    def cache_scope(self, request) -> str:
+        from billing.entitlements import entitlements_for_request
+        entitlements = entitlements_for_request(request)
+        return f'{entitlements.tier}:{entitlements.max_question_count}'
+        
 
 
-# ---------------------------------------------------------------------------
 # Subject
-# ---------------------------------------------------------------------------
 class SubjectListCreateAPIView(LanguageAwareAPIView):
     throttle_classes = [BurstUserRateThrottle]
 
@@ -73,21 +74,33 @@ class SubjectListCreateAPIView(LanguageAwareAPIView):
             return [IsAuthenticated(), IsMentorOrAdmin()]
         return [IsAuthenticated()]
 
-    @extend_schema(
-        parameters=[LANGUAGE_PARAMETER],
-        responses=SubjectSerializer(many=True),
-        tags=['Catalog'],
-    )
+    @extend_schema(parameters=[LANGUAGE_PARAMETER],responses=SubjectSerializer(many=True),tags=['Catalog'])
     def get(self, request):
         language = resolve_language(request)
-        # Til kesh kalitiga kirishi SHART — aks holda ruscha so'ragan
-        # foydalanuvchiga o'zbekcha keshdan javob qaytadi.
         cache_key = f"subjects:list:{language}:{request.query_params.urlencode()}"
         cached = cache.get(cache_key)
         if cached is not None:
             return Response(cached)
+        from django.db.models import Count, Q as _Q
 
-        queryset = Subject.objects.all().prefetch_related('topics').order_by("name")
+        from testengine.models import MIN_TIER
+
+        queryset = Subject.objects.annotate(
+            active_grade_count=Count(
+                'grades', filter=_Q(grades__is_active=True), distinct=True
+            ),
+            active_topic_count=Count(
+                'topics', filter=_Q(topics__is_active=True), distinct=True
+            ),
+            testable_topic_count=Count(
+                'topics',
+                filter=_Q(
+                    topics__is_active=True,
+                    topics__available_question_count__gte=MIN_TIER,
+                ),
+                distinct=True,
+            ),
+        ).order_by("name")
         queryset = SubjectFilter(request.query_params, queryset=queryset).qs
 
         paginator = StandardResultsPagination()
@@ -98,11 +111,8 @@ class SubjectListCreateAPIView(LanguageAwareAPIView):
         cache.set(cache_key, response.data, CACHE_DURATION['subject_list'])
         return response
 
-    @extend_schema(
-        request=SubjectWriteSerializer,
-        responses={201: SubjectSerializer, 400: detail_response('SubjectCreateError')},
-        tags=['Catalog'],
-    )
+
+    @extend_schema(request=SubjectWriteSerializer,responses={201: SubjectSerializer, 400: detail_response('SubjectCreateError')},tags=['Catalog'],)
     def post(self, request):
         serializer = SubjectWriteSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -146,9 +156,8 @@ class SubjectDetailAPIView(LanguageAwareAPIView):
         except (Subject.DoesNotExist, ValueError, TypeError):
             raise NotFound("Bunday fan mavjud emas.")
 
-    @extend_schema(
-        parameters=[LANGUAGE_PARAMETER], responses=SubjectSerializer, tags=['Catalog']
-    )
+
+    @extend_schema(parameters=[LANGUAGE_PARAMETER], responses=SubjectSerializer, tags=['Catalog'])
     def get(self, request, pk):
         subject = self.get_object(pk)
         return Response(
@@ -187,9 +196,8 @@ class SubjectDetailAPIView(LanguageAwareAPIView):
             SubjectSerializer(subject, context=self.get_serializer_context(request)).data
         )
 
-    @extend_schema(
-        responses={204: None, 409: detail_response('SubjectDeleteConflict')}, tags=['Catalog']
-    )
+
+    @extend_schema(responses={204: None, 409: detail_response('SubjectDeleteConflict')}, tags=['Catalog'])
     def delete(self, request, pk):
         subject = self.get_object(pk)
 
@@ -216,10 +224,8 @@ class SubjectDetailAPIView(LanguageAwareAPIView):
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 
-# ---------------------------------------------------------------------------
-# Topic
-# ---------------------------------------------------------------------------
-class TopicListCreateAPIView(LanguageAwareAPIView):
+# Grade (Sinf / Kitob)
+class GradeListCreateAPIView(LanguageAwareAPIView):
     throttle_classes = [BurstUserRateThrottle]
 
     def get_permissions(self):
@@ -229,17 +235,184 @@ class TopicListCreateAPIView(LanguageAwareAPIView):
 
     @extend_schema(
         parameters=[LANGUAGE_PARAMETER],
-        responses=TopicSerializer(many=True),
+        responses=GradeSerializer(many=True),
         tags=['Catalog'],
     )
     def get(self, request):
+        from django.db.models import Count, Q as _Q
+
+        from testengine.models import MIN_TIER
+
         language = resolve_language(request)
-        cache_key = f"topics:list:{language}:{request.query_params.urlencode()}"
+        cache_key = f"grades:list:{language}:{request.query_params.urlencode()}"
         cached = cache.get(cache_key)
         if cached is not None:
             return Response(cached)
 
-        queryset = Topic.objects.select_related("subject").order_by("subject", "name")
+        queryset = Grade.objects.select_related('subject').annotate(
+            active_topic_count=Count(
+                'topics', filter=_Q(topics__is_active=True), distinct=True
+            ),
+            testable_topic_count=Count(
+                'topics',
+                filter=_Q(
+                    topics__is_active=True,
+                    topics__available_question_count__gte=MIN_TIER,
+                ),
+                distinct=True,
+            ),
+        ).order_by('subject_id', 'order', 'id')
+        queryset = GradeFilter(request.query_params, queryset=queryset).qs
+
+        paginator = StandardResultsPagination()
+        page = paginator.paginate_queryset(queryset, request, view=self)
+        serializer = GradeSerializer(page, many=True, context=self.get_serializer_context(request))
+        response = paginator.get_paginated_response(serializer.data)
+
+        cache.set(cache_key, response.data, CACHE_DURATION['subject_list'])
+        return response
+
+    @extend_schema(request=GradeWriteSerializer,responses={201: GradeSerializer, 400: detail_response('GradeCreateError')},tags=['Catalog'],)
+    def post(self, request):
+        serializer = GradeWriteSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        try:
+            with transaction.atomic():
+                grade = serializer.save()
+        except IntegrityError as e:
+            grade_logger.error(
+                "Sinf yaratishda IntegrityError: %s, ma'lumot: %s",
+                str(e), request.data, extra={"user_id": request.user.id}
+            )
+            return Response(
+                {"detail": "Bu fan ichida shu nomli sinf/kitob allaqachon mavjud."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        cache.delete_pattern('grades:list:*')
+        cache.delete_pattern('subjects:list:*')
+
+        grade_logger.info(
+            "Sinf yaratildi: id=%s nomi=%r subject_id=%s foydalanuvchi_id=%s",
+            grade.id, grade.name, grade.subject_id, request.user.id,
+        )
+        return Response(
+            GradeSerializer(grade, context=self.get_serializer_context(request)).data,
+            status=status.HTTP_201_CREATED,
+        )
+
+
+class GradeDetailAPIView(LanguageAwareAPIView):
+    throttle_classes = [BurstUserRateThrottle]
+
+    def get_permissions(self):
+        if self.request.method in ("GET", "HEAD", "OPTIONS"):
+            return [IsAuthenticated()]
+        return [IsAuthenticated(), IsMentorOrAdmin()]
+
+    def get_object(self, pk):
+        try:
+            return Grade.objects.select_related('subject').get(pk=pk)
+        except (Grade.DoesNotExist, ValueError, TypeError):
+            raise NotFound("Bunday sinf/kitob mavjud emas.")
+
+    @extend_schema(parameters=[LANGUAGE_PARAMETER], responses=GradeSerializer, tags=['Catalog'])
+    def get(self, request, pk):
+        grade = self.get_object(pk)
+        return Response(
+            GradeSerializer(grade, context=self.get_serializer_context(request)).data
+        )
+
+    @extend_schema(request=GradeWriteSerializer, responses=GradeSerializer, tags=['Catalog'])
+    def put(self, request, pk):
+        return self._update(request, pk, partial=False)
+
+    @extend_schema(request=GradeWriteSerializer, responses=GradeSerializer, tags=['Catalog'])
+    def patch(self, request, pk):
+        return self._update(request, pk, partial=True)
+
+    def _update(self, request, pk, *, partial):
+        grade = self.get_object(pk)
+        serializer = GradeWriteSerializer(grade, data=request.data, partial=partial)
+        serializer.is_valid(raise_exception=True)
+
+        try:
+            with transaction.atomic():
+                grade = serializer.save()
+        except IntegrityError:
+            return Response(
+                {"detail": "Bu fan ichida shu nomli sinf/kitob allaqachon mavjud."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        cache.delete_pattern('grades:list:*')
+        cache.delete_pattern('topics:list:*')
+
+        grade_logger.info(
+            "Sinf tahrirlandi: id=%s nomi=%r foydalanuvchi_id=%s",
+            grade.id, grade.name, request.user.id,
+        )
+        return Response(
+            GradeSerializer(grade, context=self.get_serializer_context(request)).data
+        )
+
+    @extend_schema(
+        responses={204: None, 409: detail_response('GradeDeleteConflict')}, tags=['Catalog']
+    )
+    def delete(self, request, pk):
+        grade = self.get_object(pk)
+
+        if grade.topics.exists():
+            return Response(
+                {
+                    "detail": (
+                        "Bu sinf/kitobga bog'liq mavzular mavjud. O'chirishdan oldin "
+                        "mavzularni boshqa sinfga ko'chiring yoki o'chiring."
+                    )
+                },
+                status=status.HTTP_409_CONFLICT,
+            )
+
+        grade_id = grade.id
+        with transaction.atomic():
+            grade.delete()
+
+        cache.delete_pattern('grades:list:*')
+        cache.delete_pattern('subjects:list:*')
+
+        grade_logger.warning(
+            "Sinf o'chirildi: id=%s foydalanuvchi_id=%s", grade_id, request.user.id,
+        )
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+# Topic
+class TopicListCreateAPIView(LanguageAwareAPIView):
+    throttle_classes = [BurstUserRateThrottle]
+
+    def get_permissions(self):
+        if self.request.method == "POST":
+            return [IsAuthenticated(), IsMentorOrAdmin()]
+        return [IsAuthenticated()]
+
+
+    @extend_schema(parameters=[LANGUAGE_PARAMETER],responses=TopicSerializer(many=True),tags=['Catalog'])
+    def get(self, request):
+        language = resolve_language(request)
+        cache_key = (
+            f"topics:list:{language}:{self.cache_scope(request)}:"
+            f"{request.query_params.urlencode()}"
+        )
+        cached = cache.get(cache_key)
+        if cached is not None:
+            return Response(cached)
+
+        queryset = (
+            Topic.objects
+            .select_related("subject", "grade")
+            .order_by("subject_id", "grade__order", "order", "name")
+        )
         queryset = TopicFilter(request.query_params, queryset=queryset).qs
 
         paginator = StandardResultsPagination()
@@ -250,11 +423,7 @@ class TopicListCreateAPIView(LanguageAwareAPIView):
         cache.set(cache_key, response.data, CACHE_DURATION['subject_list'])
         return response
 
-    @extend_schema(
-        request=TopicWriteSerializer,
-        responses={201: TopicSerializer, 400: detail_response('TopicCreateError')},
-        tags=['Catalog'],
-    )
+    @extend_schema(request=TopicWriteSerializer,responses={201: TopicSerializer, 400: detail_response('TopicCreateError')},tags=['Catalog'],)
     def post(self, request):
         serializer = TopicWriteSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -268,15 +437,15 @@ class TopicListCreateAPIView(LanguageAwareAPIView):
                 str(e), request.data, extra={"user_id": request.user.id}
             )
             return Response(
-                {"detail": "Bu fan ichida shu nomli mavzu allaqachon mavjud."},
+                {"detail": "Bu sinf/kitob ichida shu nomli mavzu allaqachon mavjud."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
         cache.delete_pattern('topics:list:*')
 
         topic_logger.info(
-            "Mavzu yaratildi: id=%s nomi=%r subject_id=%s foydalanuvchi_id=%s",
-            topic.id, topic.name, topic.subject_id, request.user.id,
+            "Mavzu yaratildi: id=%s nomi=%r grade_id=%s foydalanuvchi_id=%s",
+            topic.id, topic.name, topic.grade_id, request.user.id,
         )
         return Response(
             TopicSerializer(topic, context=self.get_serializer_context(request)).data,
@@ -294,7 +463,7 @@ class TopicDetailAPIView(LanguageAwareAPIView):
 
     def get_object(self, pk):
         try:
-            return Topic.objects.select_related("subject").get(pk=pk)
+            return Topic.objects.select_related("subject", "grade").get(pk=pk)
         except (Topic.DoesNotExist, ValueError, TypeError):
             raise NotFound("Bunday mavzu mavjud emas.")
 
@@ -323,23 +492,21 @@ class TopicDetailAPIView(LanguageAwareAPIView):
                 topic = serializer.save()
         except IntegrityError:
             return Response(
-                {"detail": "Bu fan ichida shu nomli mavzu allaqachon mavjud."},
+                {"detail": "Bu sinf/kitob ichida shu nomli mavzu allaqachon mavjud."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
         cache.delete_pattern('topics:list:*')
 
         topic_logger.info(
-            "Mavzu tahrirlandi: id=%s nomi=%r subject_id=%s foydalanuvchi_id=%s",
-            topic.id, topic.name, topic.subject_id, request.user.id,
+            "Mavzu tahrirlandi: id=%s nomi=%r grade_id=%s foydalanuvchi_id=%s",
+            topic.id, topic.name, topic.grade_id, request.user.id,
         )
         return Response(
             TopicSerializer(topic, context=self.get_serializer_context(request)).data
         )
 
-    @extend_schema(
-        responses={204: None, 409: detail_response('TopicDeleteConflict')}, tags=['Catalog']
-    )
+    @extend_schema(responses={204: None, 409: detail_response('TopicDeleteConflict')}, tags=['Catalog'])
     def delete(self, request, pk):
         topic = self.get_object(pk)
 
@@ -366,12 +533,10 @@ class TopicDetailAPIView(LanguageAwareAPIView):
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 
-# ---------------------------------------------------------------------------
+
 # Question
-# ---------------------------------------------------------------------------
 class QuestionListCreateAPIView(LanguageAwareAPIView):
     throttle_classes = [BurstUserRateThrottle]
-    # Rasm yuklash uchun multipart shart; JSON ham (rasmsiz) ishlayveradi.
     parser_classes = [JSONParser, MultiPartParser, FormParser]
 
     def get_permissions(self):
@@ -399,7 +564,11 @@ class QuestionListCreateAPIView(LanguageAwareAPIView):
         if cached is not None:
             return Response(cached)
 
-        queryset = Question.objects.select_related("topic__subject").order_by("topic", "id")
+        queryset = Question.objects.select_related(
+            "topic__subject", "topic__grade"
+        ).order_by("topic", "id")
+        if user_role not in (Role.MENTOR, Role.ADMIN):
+            queryset = queryset.available()
         queryset = QuestionFilter(request.query_params, queryset=queryset).qs
 
         paginator = StandardResultsPagination()
@@ -419,13 +588,7 @@ class QuestionListCreateAPIView(LanguageAwareAPIView):
             'multipart/form-data': QuestionWriteSerializer,
             'application/json': QuestionWriteSerializer,
         },
-        responses={201: QuestionAdminSerializer, 400: detail_response('QuestionCreateError')},
-        tags=['Catalog'],
-        description="Savol yaratish. `image` — IXTIYORIY: rasm kerak bo'lsa "
-                    "`multipart/form-data` bilan yuboriladi, kerak bo'lmasa "
-                    "oddiy JSON yetarli. `text_ru`/`text_en` va "
-                    "`options_ru`/`options_en` ham ixtiyoriy tarjimalar.",
-    )
+        responses={201: QuestionAdminSerializer, 400: detail_response('QuestionCreateError')},tags=['Catalog'])
     def post(self, request):
         serializer = QuestionWriteSerializer(
             data=request.data, context=self.get_serializer_context(request)
@@ -446,6 +609,8 @@ class QuestionListCreateAPIView(LanguageAwareAPIView):
             )
 
         cache.delete_pattern('questions:list:*')
+        cache.delete_pattern('topics:list:*')
+        cache.delete_pattern('subjects:list:*')
 
         question_logger.info(
             "Savol yaratildi: id=%s topic_id=%s qiyinlik=%s rasm=%s foydalanuvchi_id=%s",
@@ -472,15 +637,18 @@ class QuestionDetailAPIView(LanguageAwareAPIView):
             return QuestionAdminSerializer
         return QuestionSerializer
 
-    def get_object(self, pk):
+    def get_object(self, pk, user=None):
+        queryset = Question.objects.select_related("topic__subject", "topic__grade")
+        if user is not None and getattr(user, 'role', None) not in (Role.MENTOR, Role.ADMIN):
+            queryset = queryset.available()
         try:
-            return Question.objects.select_related("topic__subject").get(pk=pk)
+            return queryset.get(pk=pk)
         except (Question.DoesNotExist, ValueError, TypeError):
             raise NotFound("Bunday savol mavjud emas.")
 
     @extend_schema(parameters=[LANGUAGE_PARAMETER], responses=QuestionSerializer, tags=['Catalog'])
     def get(self, request, pk):
-        question = self.get_object(pk)
+        question = self.get_object(pk, user=request.user)
         serializer_class = self.select_serializer(request.user)
         return Response(
             serializer_class(question, context=self.get_serializer_context(request)).data
@@ -534,8 +702,8 @@ class QuestionDetailAPIView(LanguageAwareAPIView):
             )
 
         cache.delete_pattern('questions:list:*')
+        cache.delete_pattern('topics:list:*')
 
-        # Rasm almashtirilgan bo'lsa eskisini diskda qoldirmaymiz.
         new_image = question.image.name if question.image else None
         if old_image and old_image != new_image:
             question.image.storage.delete(old_image)
@@ -549,9 +717,7 @@ class QuestionDetailAPIView(LanguageAwareAPIView):
             QuestionAdminSerializer(question, context=self.get_serializer_context(request)).data
         )
 
-    @extend_schema(
-        responses={204: None, 409: detail_response('QuestionDeleteConflict')}, tags=['Catalog']
-    )
+    @extend_schema(responses={204: None, 409: detail_response('QuestionDeleteConflict')}, tags=['Catalog'])
     def delete(self, request, pk):
         from testengine.models import Answer, SessionQuestion
 
@@ -568,9 +734,6 @@ class QuestionDetailAPIView(LanguageAwareAPIView):
                 status=status.HTTP_409_CONFLICT,
             )
 
-        # Savol hali javob berilmagan bo'lsa ham, davom etayotgan sessiyaga
-        # biriktirilgan bo'lishi mumkin. O'chirsak, o'sha foydalanuvchining
-        # "15 ta savol" i jimgina 14 taga aylanib qoladi.
         if SessionQuestion.objects.filter(
             question=question, session__finished_at__isnull=True
         ).exists():

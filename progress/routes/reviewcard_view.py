@@ -27,8 +27,6 @@ TODAY_CACHE_TTL = 60 * 5
 TODAY_CACHE_KEY = 'progress:reviews:today:user:{user_id}'
 
 
-# `ReviewCardFilter` qo'lda qo'llaniladi (bu oddiy APIView, `queryset` atributi yo'q),
-# shuning uchun drf-spectacular filtrlarni o'zi topa olmaydi — quyida qo'lda beriladi.
 REVIEW_CARD_FILTER_PARAMETERS = [
     OpenApiParameter('user', OpenApiTypes.INT),
     OpenApiParameter('question', OpenApiTypes.INT),

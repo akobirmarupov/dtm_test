@@ -1,24 +1,41 @@
 from django.contrib import admin, messages
-
 from unfold.admin import ModelAdmin
-
 from billing.services import SubscriptionError, approve_payment, reject_payment
-
 from .models import Payment, Plan, Subscription
 
 
 @admin.register(Plan)
 class PlanAdmin(ModelAdmin):
-    list_display = ("id", "name", "price", "duration_days", "is_active", "created_at")
-    list_filter = ("is_active",)
-    search_fields = ("name", "name_ru", "name_en")
+    list_display = (
+        "id", "name", "code", "price", "duration_days", "is_pro",
+        "daily_topic_limit", "can_view_explanations", "is_active", "created_at",
+    )
+    list_filter = ("is_active", "is_pro", "can_view_explanations")
+    search_fields = ("name", "name_ru", "name_en", "code")
     ordering = ("price", "id")
+    list_editable = ("price", "is_active")
     fieldsets = (
-        ("Asosiy", {"fields": ("price", "duration_days", "is_active")}),
+        ("Asosiy", {"fields": ("code", "price", "duration_days", "is_active")}),
+        ("Imkoniyatlar", {
+            "fields": (
+                "is_pro", "daily_topic_limit", "max_question_count",
+                "can_view_explanations", "explanation_limit_per_day", "features",
+            ),
+            "description": (
+                "Narx ham, cheklovlar ham SHU YERDA boshqariladi — kodda emas. "
+                "«Kunlik mavzu limiti» bo'sh qoldirilsa cheksiz. Pro tarifda "
+                "limit umuman qo'llanilmaydi."
+            ),
+        }),
         ("O'zbekcha", {"fields": ("name", "description")}),
         ("Ruscha", {"fields": ("name_ru", "description_ru")}),
         ("Inglizcha", {"fields": ("name_en", "description_en")}),
     )
+
+    def save_model(self, request, obj, form, change):
+        super().save_model(request, obj, form, change)
+        from billing.entitlements import invalidate_free_plan_cache
+        invalidate_free_plan_cache()
 
 
 @admin.register(Subscription)
@@ -36,7 +53,6 @@ class SubscriptionAdmin(ModelAdmin):
 
 @admin.register(Payment)
 class PaymentAdmin(ModelAdmin):
-    """Arizalar. Admin shu yerdan bir bosishda tasdiqlaydi yoki rad etadi."""
 
     list_display = (
         "id", "user", "plan", "amount", "status", "contact_phone",

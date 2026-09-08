@@ -6,7 +6,6 @@ from progress.models import ReviewCard, Streak, XPTransaction
 
 
 class ReviewCardSerializer(serializers.ModelSerializer):
-    """GET /reviews/today/ va /reviews/ uchun — ro'yxatda ko'rsatish."""
     question_text = serializers.CharField(source='question.text', read_only=True)
     subject_name = serializers.CharField(source='question.topic.subject.name', read_only=True)
     topic_name = serializers.CharField(source='question.topic.name', read_only=True)
@@ -21,15 +20,12 @@ class ReviewCardSerializer(serializers.ModelSerializer):
 
 
 class ReviewCardSubmitSerializer(serializers.Serializer):
-    """POST /reviews/{id}/submit/ uchun kirish — javob to'g'ri/notog'riligi va sarflangan vaqt."""
     is_correct = serializers.BooleanField()
     response_time = serializers.IntegerField(min_value=0, help_text='soniyalarda')
 
 
 
 class StreakSerializer(serializers.ModelSerializer):
-    """GET /streak/ — foydalanuvchining joriy streak holati (faqat o'qish)."""
-
     class Meta:
         model = Streak
         fields = [
@@ -42,7 +38,6 @@ class StreakSerializer(serializers.ModelSerializer):
 
 
 class XPTransactionSerializer(serializers.ModelSerializer):
-    """GET /xp/transactions/ — XP tarixi, sahifalangan ro'yxat."""
     source_display = serializers.CharField(source='get_source_display', read_only=True)
 
     class Meta:
@@ -55,7 +50,6 @@ class XPTransactionSerializer(serializers.ModelSerializer):
 
 
 class XPSummarySerializer(serializers.Serializer):
-    """GET /xp/summary/ — agregatsiya qilingan qiymatlar, model'ga bog'liq emas."""
     xp_total = serializers.IntegerField()
     xp_today = serializers.IntegerField()
     xp_this_week = serializers.IntegerField()
@@ -63,8 +57,8 @@ class XPSummarySerializer(serializers.Serializer):
 
 @extend_schema_serializer(component_name='XPLeaderboardEntry')
 class LeaderboardEntrySerializer(serializers.Serializer):
-    """GET /leaderboard/weekly/ — reyting qatori, XPTransaction'lardan agregatsiya qilinadi."""
     rank = serializers.IntegerField()
+    user_id = serializers.IntegerField(required=False)
     nickname = serializers.CharField()
     xp_this_week = serializers.IntegerField()
     is_current_user = serializers.BooleanField()

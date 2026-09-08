@@ -1,0 +1,70 @@
+# Testlar bor edi, lekin ularni hech kim avtomatik ishga tushirmasdi.
+# Endi har bir push va PR da ishlaydi.
+name: Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: testyourself
+          POSTGRES_PASSWORD: testyourself
+          POSTGRES_DB: testyourself
+        ports: ['5432:5432']
+        # Testlar baza tayyor bo'lgunicha kutishi kerak, aks holda CI
+        # tasodifiy yiqiladi.
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+      redis:
+        image: redis:7
+        ports: ['6379:6379']
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      SECRET_KEY: ci-secret-key-not-used-in-production
+      DEBUG: 'True'
+      DATABASE_URL: postgres://testyourself:testyourself@localhost:5432/testyourself
+      REDIS_URL: redis://localhost:6379/0
+      CELERY_TASK_ALWAYS_EAGER: 'True'
+      ALLOWED_HOSTS: '*'
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+
+      - name: Bog'liqliklarni o'rnatish
+        run: pip install -r requirements.txt
+
+      - name: Migratsiyalar to'liqmi (model va migratsiya mos keladimi)
+        run: python manage.py makemigrations --check --dry-run
+
+      - name: Django tekshiruvi (prod sozlamalari bilan)
+        run: python manage.py check --deploy --fail-level ERROR
+        env:
+          DEBUG: 'False'
+
+      - name: Testlar
+        run: python manage.py test --verbosity 2
+
+      - name: OpenAPI sxemasi xatosiz yig'iladimi
+        run: python manage.py spectacular --fail-on-warn --file /dev/null

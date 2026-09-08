@@ -1,39 +1,45 @@
 import uuid
 
 from django.db import models
-
 from common.models import BaseModel
 
 
 class Plan(BaseModel):
-    """Tarif rejasi: masalan 0 so'm (Bepul), 50 000 so'm, 70 000 so'm.
-
-    Tariflar bir-biridan NARXI bilan taqqoslanadi: aktiv obunasi bor
-    foydalanuvchi faqat qimmatroq tarifga o'ta oladi (upgrade), bir xil yoki
-    arzonroq tarifni esa muddat tugagunicha qayta ololmaydi.
-    """
-
     name = models.CharField('Nomi (UZ)', max_length=100)
     name_ru = models.CharField('Nomi (RU)', max_length=100, blank=True)
     name_en = models.CharField('Nomi (EN)', max_length=100, blank=True)
-
     description = models.TextField('Tavsif (UZ)', blank=True)
     description_ru = models.TextField('Tavsif (RU)', blank=True)
     description_en = models.TextField('Tavsif (EN)', blank=True)
-
     price = models.DecimalField('Narxi', max_digits=12, decimal_places=2)
     duration_days = models.PositiveIntegerField('Muddati (kun)')
     is_active = models.BooleanField('Faol', default=True)
+    code = models.SlugField('Tizim kodi', max_length=32, blank=True,
+        help_text="Kodda murojaat qilish uchun barqaror kalit: free, pro_basic, pro_full.",)
+    is_pro = models.BooleanField('Pro tarif', default=False,
+        help_text="Pro tariflarda kunlik mavzu limiti qo'llanilmaydi.",)
+    daily_topic_limit = models.PositiveSmallIntegerField('Kunlik mavzu limiti', null=True, blank=True,
+        help_text="Bir kunda nechta TURLI mavzuda test ishlash mumkin. ""Bo'sh qoldirilsa — cheklovsiz.",)
+    max_question_count = models.PositiveSmallIntegerField('Bir testdagi maksimal savol', default=60,)
+    can_view_explanations = models.BooleanField('Yechim izohlarini ko\'radi', default=False,)
+    explanation_limit_per_day = models.PositiveSmallIntegerField('Kunlik izoh limiti', null=True, blank=True,
+        help_text="Kuniga nechta testning izohini ochish mumkin. ""Bo'sh qoldirilsa — cheklovsiz.",)
+    features = models.JSONField("Qo'shimcha imkoniyatlar", default=dict, blank=True,
+        help_text="Kelajakdagi flaglar uchun erkin JSON. Masalan: "'{"ai_tutor": true, "mock_exam": false}',)
 
     class Meta:
         ordering = ['price', 'id']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['code'], condition=models.Q(code__gt=''), name='uniq_plan_code'
+            ),
+        ]
 
     def __str__(self):
         return self.name
 
     @property
     def is_free(self) -> bool:
-        """Bepul tarif admin tasdig'isiz darhol faollashadi."""
         return self.price is not None and self.price <= 0
 
 
@@ -74,13 +80,6 @@ class Subscription(BaseModel):
 
 
 class Payment(BaseModel):
-    """Obuna uchun ARIZA.
-
-    Hozircha to'lov shlyuzi yo'q: foydalanuvchi tarifni tanlab ariza
-    yuboradi, admin bilan Telegram orqali bog'lanadi, admin to'lovni qabul
-    qilgach arizani tasdiqlaydi va obuna faollashadi.
-    """
-
     class Provider(models.TextChoices):
         PAYME = 'payme', 'Payme'
         CLICK = 'click', 'Click'

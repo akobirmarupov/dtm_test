@@ -1,3 +1,5 @@
+import sys
+
 from pathlib import Path
 from datetime import timedelta
 
@@ -331,6 +333,23 @@ CACHES = {
     }
 }
 
+# Testlar ALOHIDA kesh maydonida ishlaydi.
+#
+# Sabab: kesh ham, throttling hisobi ham Redis'da. Umumiy Redis bilan
+# ishlaganda testlar bir-birining va ishchi muhitning ma'lumotiga urilib
+# ketadi: qayta ishga tushirilgan test o'sha `user_id` ostidagi eski
+# throttle hisobini topib, 429 oladi va tasodifiy yiqiladi.
+#
+# `KEY_PREFIX` yetarli emas edi — hisoblar baribir bitta Redis DB da
+# qolardi va `flushdb` ishchi keshni ham o'chirib yuborardi. Shuning uchun
+# alohida prefiks + har bir ishga tushishda o'sha prefiksni tozalash.
+if 'test' in sys.argv:
+    CACHES['default']['KEY_PREFIX'] = 'test'
+
+# Test ishga tushganda shu prefiksdagi kalitlar tozalanadi
+# (`common.test_runner.IsolatedCacheTestRunner`).
+TEST_RUNNER = 'common.test_runner.IsolatedCacheTestRunner'
+
 
 # Celery — og'ir ishlar (e'lon tarqatish, reyting hisobi) so'rovdan tashqarida.
 CELERY_BROKER_URL = config('CELERY_BROKER_URL', default=REDIS_URL)
@@ -347,6 +366,26 @@ CELERY_TASK_ALWAYS_EAGER = config('CELERY_TASK_ALWAYS_EAGER', default=False, cas
 # Davriy vazifalar. Ishlashi uchun beat ham kerak:
 #   celery -A config beat --loglevel=info
 CELERY_BEAT_SCHEDULE = {
+    # Imtihon muddati o'tgan sessiyalarni yopish. Foydalanuvchi qaytib
+    # kelganda ham yopiladi, lekin u qaytmasligi mumkin — shunda sessiya
+    # abadiy ochiq qolardi.
+    'finish-expired-sessions': {
+        'task': 'testengine.tasks.finish_expired_sessions_task',
+        'schedule': crontab(minute='*/10'),
+    },
+    # Leaderboard tartibini qayta hisoblash. Har bir test yakunida emas:
+    # tartib butun jadval bo'ylab hisoblanadi va uni har bir foydalanuvchi
+    # uchun takrorlash bazani ortiqcha yuklaydi.
+    'rebuild-leaderboards': {
+        'task': 'rating.tasks.rebuild_leaderboards_task',
+        'schedule': crontab(minute='*/5'),
+    },
+    # Haftalik ligalarni yakunlash: dushanba 00:05 (mahalliy vaqt).
+    # Kim ko'tarildi, kim tushdi — shu payt hal bo'ladi.
+    'close-leagues-weekly': {
+        'task': 'rating.tasks.close_leagues_task',
+        'schedule': crontab(hour=0, minute=5, day_of_week=1),
+    },
     'expire-subscriptions-daily': {
         'task': 'billing.tasks.expire_subscriptions_task',
         # Har kuni mahalliy vaqt bilan 00:10 da.
@@ -383,9 +422,26 @@ REST_FRAMEWORK = {
 
 SPECTACULAR_SETTINGS = {
     'TITLE': 'TestYourself API',
-    'DESCRIPTION': 'TestYourself platformasi API hujjatlari',
-    'VERSION': '1.0.0',
+    'DESCRIPTION': (
+        'DTM test platformasi API hujjatlari.\n\n'
+        'Kontent ierarxiyasi: **Fan -> Sinf/Kitob -> Mavzu -> Savol**.\n\n'
+        'Test oqimi: `available-counts` (nechta savol tanlash mumkin) -> '
+        '`start-test` -> `questions` -> `answer` -> `finish` -> `review`.'
+    ),
+    'VERSION': '2.0.0',
     'SERVE_INCLUDE_SCHEMA': False,
+    'TAGS': [
+        {'name': 'Catalog', 'description': 'Fan, sinf/kitob, mavzu va savollar'},
+        {'name': 'TestSession', 'description': 'Test ishlash oqimi'},
+        {'name': 'Guest', 'description': "Ro'yxatdan o'tmagan foydalanuvchi oqimi"},
+    ],
+    # Bir nechta modelda `status` maydoni bor va ularning variantlari har xil.
+    # Nomlar berilmasa sxemada `Status10aEnum` kabi tushunarsiz turlar chiqadi.
+    'ENUM_NAME_OVERRIDES': {
+        'QuestionStatusEnum': 'catalog.models.Question.Status',
+        'PaymentStatusEnum': 'billing.models.Payment.Status',
+        'SubscriptionStatusEnum': 'billing.models.Subscription.Status',
+    },
 }
 
 

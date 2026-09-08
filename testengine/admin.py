@@ -2,7 +2,8 @@ from django.contrib import admin
 
 from unfold.admin import ModelAdmin, StackedInline, TabularInline
 
-from .models import Answer, SessionQuestion, TestResult, TestSession
+from .models import Answer,DailyTopicUsage,ExplanationUsage,SessionQuestion,TestResult,TestSession
+
 
 
 class SessionQuestionInline(TabularInline):
@@ -74,3 +75,37 @@ class TestResultAdmin(ModelAdmin):
     search_fields = ("session__user__email",)
     autocomplete_fields = ("session",)
     ordering = ("-created_at",)
+
+
+@admin.register(DailyTopicUsage)
+class DailyTopicUsageAdmin(ModelAdmin):
+    """Free foydalanuvchining kunlik mavzu hisobi.
+
+    Faqat ko'rish uchun: qatorlar test boshlanganda avtomatik yoziladi va
+    yangi kun kirishi bilan hisob o'z-o'zidan noldan boshlanadi.
+    """
+
+    list_display = ("date", "user", "topic", "sessions_started")
+    list_filter = ("date", "topic__subject")
+    search_fields = ("user__email", "topic__name")
+    autocomplete_fields = ("user", "topic")
+    ordering = ("-date", "-id")
+    readonly_fields = ("user", "topic", "date", "sessions_started")
+
+    def has_add_permission(self, request):
+        return False
+
+
+@admin.register(ExplanationUsage)
+class ExplanationUsageAdmin(ModelAdmin):
+    """Yechim izohlarini ochish hisobi (Pro-Basic kunlik limiti uchun)."""
+
+    list_display = ("date", "user", "session")
+    list_filter = ("date",)
+    search_fields = ("user__email",)
+    autocomplete_fields = ("user", "session")
+    ordering = ("-date", "-id")
+    readonly_fields = ("user", "session", "date")
+
+    def has_add_permission(self, request):
+        return False

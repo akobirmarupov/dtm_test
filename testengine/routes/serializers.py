@@ -3,13 +3,18 @@ from rest_framework import serializers
 from testengine.models import (
     MAX_QUESTION_COUNT,
     MIN_QUESTION_COUNT,
+    QUESTION_COUNT_TIERS,
     Answer,
     TestResult,
     TestSession,
 )
 from account.models import User
-from catalog.models import Question, Subject, Topic
-from catalog.routes.serializers import absolute_image_url, translated_options
+from catalog.models import Grade, Question, Subject, Topic
+from catalog.routes.serializers import (
+    absolute_file_url,
+    absolute_image_url,
+    translated_options,
+)
 from common.i18n import LanguageContextMixin, translated
 
 
@@ -25,6 +30,30 @@ class SubjectMinimalSerializer(LanguageContextMixin, serializers.ModelSerializer
         return translated(obj, 'name', self.language)
 
 
+class TopicMinimalSerializer(LanguageContextMixin, serializers.ModelSerializer):
+    name = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Topic
+        fields = ["id", "name"]
+        read_only_fields = fields
+
+    def get_name(self, obj) -> str:
+        return translated(obj, 'name', self.language)
+
+
+class GradeMinimalSerializer(LanguageContextMixin, serializers.ModelSerializer):
+    name = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Grade
+        fields = ["id", "name"]
+        read_only_fields = fields
+
+    def get_name(self, obj) -> str:
+        return translated(obj, 'name', self.language)
+
+
 class UserMinimalSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
@@ -32,15 +61,6 @@ class UserMinimalSerializer(serializers.ModelSerializer):
 
 
 class QuestionForTestSerializer(LanguageContextMixin, serializers.ModelSerializer):
-    """Test paytida ko'rsatiladigan savol.
-
-    * `correct_option` BU YERDA YO'Q — aks holda mijoz javobni oldindan bilib
-      oladi.
-    * Matn va variantlar so'rov tilida (uz/ru/en) qaytadi.
-    * `image` — savolga rasm biriktirilgan bo'lsa uning to'liq manzili,
-      bo'lmasa `null`.
-    """
-
     text = serializers.SerializerMethodField()
     options = serializers.SerializerMethodField()
     topic_name = serializers.SerializerMethodField()
@@ -113,6 +133,8 @@ class SessionQuestionReviewSerializer(serializers.Serializer):
     is_correct = serializers.SerializerMethodField()
     is_answered = serializers.SerializerMethodField()
     time_spent_seconds = serializers.SerializerMethodField()
+    explanation = serializers.SerializerMethodField()
+    hint = serializers.SerializerMethodField()
 
     def get_correct_option(self, obj) -> str:
         return obj.question.correct_option
@@ -132,6 +154,22 @@ class SessionQuestionReviewSerializer(serializers.Serializer):
         answer = self._answer(obj)
         return answer.time_spent_seconds if answer else 0
 
+    def get_explanation(self, obj) -> dict | None:
+        """Yechim izohi. Obuna yetarli bo'lmasa `null`.
+
+        Izoh view'da bir marta tayyorlanadi va kontekstda keladi — bu yerda
+        savol bo'yicha xizmat chaqirilmaydi (30 ta savolga 30 ta chaqiruv
+        bo'lib ketardi).
+        """
+        explanations = self.context.get('explanations')
+        if not explanations:
+            return None
+        explanation = explanations.get(obj.question_id)
+        return explanation.as_dict() if explanation else None
+
+    def get_hint(self, obj) -> str | None:
+        return obj.question.hint or None
+
     def _answer(self, obj):
         answers = self.context.get('answers') or {}
         return answers.get(obj.question_id)
@@ -145,21 +183,27 @@ class SessionProgressSerializer(serializers.Serializer):
         child=serializers.IntegerField(), read_only=True
     )
     is_finished = serializers.BooleanField(read_only=True)
+    seconds_left = serializers.IntegerField(read_only=True, allow_null=True)
+    expires_at = serializers.DateTimeField(read_only=True, allow_null=True)
 
 
 class TestSessionSerializer(serializers.ModelSerializer):
     subject = SubjectMinimalSerializer(read_only=True)
+    topic = TopicMinimalSerializer(read_only=True)
+    grade = GradeMinimalSerializer(read_only=True)
     user = UserMinimalSerializer(read_only=True)
     mode_display = serializers.CharField(source='get_mode_display', read_only=True)
     is_finished = serializers.BooleanField(read_only=True)
     duration_seconds = serializers.SerializerMethodField()
+    seconds_left = serializers.IntegerField(read_only=True, allow_null=True)
 
     class Meta:
         model = TestSession
         fields = [
-            "id", "user", "subject", "mode", "mode_display", "question_count",
-            "started_at", "finished_at", "is_finished", "duration_seconds",
-            "created_at", "updated_at",
+            "id", "user", "subject", "grade", "topic", "mode", "mode_display",
+            "question_count", "started_at", "finished_at", "is_finished",
+            "duration_seconds", "time_limit_seconds", "expires_at",
+            "seconds_left", "auto_finished", "created_at", "updated_at",
         ]
         read_only_fields = fields
 
@@ -369,9 +413,136 @@ class BulkAnswerSerializer(serializers.Serializer):
         return value
 
 
+class ExplanationAccessSerializer(serializers.Serializer):
+    """Yechim izohlari shu foydalanuvchiga ochiqmi va nega."""
+
+    available = serializers.BooleanField(read_only=True)
+    code = serializers.CharField(read_only=True)
+    detail = serializers.CharField(read_only=True, allow_blank=True)
+    limit_per_day = serializers.IntegerField(read_only=True, allow_null=True)
+    used_today = serializers.IntegerField(read_only=True)
+    remaining_today = serializers.IntegerField(read_only=True, allow_null=True)
+    upgrade_required = serializers.BooleanField(read_only=True)
+
+
 class SessionFinishResponseSerializer(serializers.Serializer):
     """`finish` javobi: natija + to'liq tahlil bitta so'rovda."""
 
     session = TestSessionDetailSerializer(read_only=True)
     result = TestResultSerializer(read_only=True)
     review = SessionQuestionReviewSerializer(many=True, read_only=True)
+    explanation_access = ExplanationAccessSerializer(read_only=True)
+
+
+# ---------------------------------------------------------------------------
+# Mavzu bo'yicha test: savol sonini tanlash va boshlash
+# ---------------------------------------------------------------------------
+class TopicAccessSerializer(serializers.Serializer):
+    """Kunlik mavzu limiti holati — Pro-taklif oynasi uchun."""
+
+    can_start = serializers.BooleanField(read_only=True)
+    code = serializers.CharField(read_only=True)
+    detail = serializers.CharField(read_only=True, allow_blank=True)
+    daily_topic_limit = serializers.IntegerField(read_only=True, allow_null=True)
+    topics_used_today = serializers.IntegerField(read_only=True)
+    topics_remaining_today = serializers.IntegerField(read_only=True, allow_null=True)
+    reset_at = serializers.DateTimeField(read_only=True)
+    upgrade_required = serializers.BooleanField(read_only=True)
+
+
+class AvailableCountsSerializer(serializers.Serializer):
+    """`GET /testengine/topics/<id>/available-counts/` javobi.
+
+    `total_questions` ATAYIN YO'Q talaba uchun: mavzuda nechta savol borligi
+    ichki ma'lumot. Mentor/admin uni `question_count` orqali ko'radi.
+    """
+
+    topic = TopicMinimalSerializer(read_only=True)
+    subject = SubjectMinimalSerializer(read_only=True)
+    grade = GradeMinimalSerializer(read_only=True, allow_null=True)
+    is_available = serializers.BooleanField(read_only=True)
+    tiers = serializers.ListField(child=serializers.IntegerField(), read_only=True)
+    min_required = serializers.IntegerField(read_only=True)
+    reason = serializers.CharField(read_only=True, allow_null=True)
+    access = TopicAccessSerializer(read_only=True)
+    entitlements = serializers.DictField(read_only=True)
+    question_count = serializers.IntegerField(read_only=True, allow_null=True)
+
+
+class StartTopicTestSerializer(serializers.Serializer):
+    """`POST /testengine/topics/<id>/start-test/` so'rovi."""
+
+    count = serializers.IntegerField(required=False)
+    mode = serializers.ChoiceField(
+        choices=TestSession.Mode.choices, default=TestSession.Mode.PRACTICE
+    )
+
+    def validate_count(self, value):
+        if value not in QUESTION_COUNT_TIERS:
+            raise serializers.ValidationError(
+                f"Savollar soni faqat quyidagilardan biri bo'lishi mumkin: "
+                f"{list(QUESTION_COUNT_TIERS)}."
+            )
+        return value
+
+
+# ---------------------------------------------------------------------------
+# Guest oqimi
+# ---------------------------------------------------------------------------
+class GuestStartSerializer(serializers.Serializer):
+    """Guest testi: faqat mavzu tanlanadi, savol soni qat'iy 20."""
+
+    topic = serializers.PrimaryKeyRelatedField(queryset=Topic.objects.all())
+
+
+class GuestQuestionSerializer(QuestionForTestSerializer):
+    """Guest ko'radigan savol — ro'yxatdagi tartib raqami bilan."""
+
+    order = serializers.IntegerField(read_only=True)
+
+    class Meta(QuestionForTestSerializer.Meta):
+        fields = QuestionForTestSerializer.Meta.fields + ["order"]
+        read_only_fields = fields
+
+
+class GuestSessionSerializer(serializers.Serializer):
+    token = serializers.CharField(read_only=True)
+    question_count = serializers.IntegerField(read_only=True)
+    questions = serializers.ListField(read_only=True)
+    topic = TopicMinimalSerializer(read_only=True)
+    subject = SubjectMinimalSerializer(read_only=True)
+    is_guest = serializers.BooleanField(read_only=True)
+
+
+class GuestAnswerItemSerializer(serializers.Serializer):
+    question = serializers.IntegerField()
+    selected_option = serializers.CharField(required=False, allow_blank=True, default='')
+
+    def validate_selected_option(self, value):
+        value = str(value or '').strip().upper()
+        if value and (len(value) != 1 or not value.isalpha()):
+            raise serializers.ValidationError(
+                "Tanlangan variant bitta harf bo'lishi kerak (A, B, C, D, E, F)."
+            )
+        return value
+
+
+class GuestSubmitSerializer(serializers.Serializer):
+    """Guest testni yakunlaydi. Javoblar SAQLANMAYDI va BAHOLANMAYDI."""
+
+    token = serializers.CharField()
+    answers = GuestAnswerItemSerializer(many=True, required=False)
+
+
+class GuestResultSerializer(serializers.Serializer):
+    """Guest javobi — natija O'RNIGA ro'yxatdan o'tish taklifi."""
+
+    requires_registration = serializers.BooleanField(read_only=True)
+    results_hidden = serializers.BooleanField(read_only=True)
+    total_questions = serializers.IntegerField(read_only=True)
+    answered_count = serializers.IntegerField(read_only=True)
+    code = serializers.CharField(read_only=True)
+    title = serializers.CharField(read_only=True)
+    detail = serializers.CharField(read_only=True)
+    actions = serializers.ListField(read_only=True)
+    guest_question_count = serializers.IntegerField(read_only=True)

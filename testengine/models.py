@@ -1,11 +1,20 @@
 from django.db import models
+from django.utils import timezone
 
 from common.models import BaseModel
 
-# Sessiya ochilganda nechta savol biriktiriladi (mijoz boshqacha so'ramasa).
 DEFAULT_QUESTION_COUNT = 15
 MIN_QUESTION_COUNT = 1
 MAX_QUESTION_COUNT = 100
+
+
+QUESTION_COUNT_TIERS = (20, 25, 30, 35, 40, 45, 50, 55, 60)
+MIN_TIER = QUESTION_COUNT_TIERS[0]
+MAX_TIER = QUESTION_COUNT_TIERS[-1]
+
+
+EXAM_SECONDS_PER_QUESTION = 90
+PRACTICE_MAX_SECONDS_PER_QUESTION = 600
 
 
 class TestSession(BaseModel):
@@ -15,17 +24,24 @@ class TestSession(BaseModel):
 
     user = models.ForeignKey('account.User', on_delete=models.CASCADE, related_name='test_sessions')
     subject = models.ForeignKey('catalog.Subject', on_delete=models.CASCADE, related_name='test_sessions')
+    topic = models.ForeignKey('catalog.Topic', on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='test_sessions', verbose_name='Mavzu',)
+    grade = models.ForeignKey('catalog.Grade', on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='test_sessions', verbose_name='Sinf / Kitob',)
     mode = models.CharField('Rejim', max_length=10, choices=Mode.choices, default=Mode.PRACTICE)
-    question_count = models.PositiveSmallIntegerField(
-        'Savollar soni', default=DEFAULT_QUESTION_COUNT
-    )
+    question_count = models.PositiveSmallIntegerField('Savollar soni', default=DEFAULT_QUESTION_COUNT )
     started_at = models.DateTimeField('Boshlangan vaqti', auto_now_add=True)
     finished_at = models.DateTimeField('Tugagan vaqti', null=True, blank=True)
+    time_limit_seconds = models.PositiveIntegerField('Vaqt chegarasi (soniya)', null=True, blank=True)
+    expires_at = models.DateTimeField('Tugash muddati', null=True, blank=True)
+    auto_finished = models.BooleanField('Avtomatik yakunlangan', default=False)
 
     class Meta:
         ordering = ['-created_at']
         indexes = [
             models.Index(fields=['user', '-created_at']),
+            models.Index(fields=['expires_at'], condition=models.Q(finished_at__isnull=True),
+                         name='idx_session_open_expiry'),
         ]
 
     def __str__(self):
@@ -33,24 +49,26 @@ class TestSession(BaseModel):
 
     @property
     def is_finished(self) -> bool:
-        """Sessiya yakunlanganmi. Yakunlangandan keyin javoblar o'zgarmaydi
-        va faqat shundan keyin to'g'ri/noto'g'ri ma'lumoti ochiladi."""
         return self.finished_at is not None
+
+    @property
+    def is_expired(self) -> bool:
+        if self.finished_at is not None or self.expires_at is None:
+            return False
+        return timezone.now() >= self.expires_at
+
+    @property
+    def seconds_left(self) -> int | None:
+        if self.expires_at is None:
+            return None
+        if self.finished_at is not None:
+            return 0
+        return max(int((self.expires_at - timezone.now()).total_seconds()), 0)
 
 
 class SessionQuestion(BaseModel):
-    """Sessiya ochilganda savollar ro'yxati SHU YERDA qotiriladi.
-
-    Shu tufayli foydalanuvchi 10-savoldan 3-savolga qaytib, javobini
-    o'zgartira oladi: savollar tartibi butun sessiya davomida o'zgarmaydi.
-    """
-
-    session = models.ForeignKey(
-        TestSession, on_delete=models.CASCADE, related_name='session_questions'
-    )
-    question = models.ForeignKey(
-        'catalog.Question', on_delete=models.CASCADE, related_name='session_questions'
-    )
+    session = models.ForeignKey(TestSession, on_delete=models.CASCADE, related_name='session_questions')
+    question = models.ForeignKey('catalog.Question', on_delete=models.CASCADE, related_name='session_questions')
     order = models.PositiveSmallIntegerField('Tartib raqami')
 
     class Meta:
@@ -84,9 +102,6 @@ class Answer(BaseModel):
 
     class Meta:
         ordering = ['id']
-        # Bitta sessiyada bitta savolga faqat bitta javob bo'ladi. Javobni
-        # o'zgartirish = shu yozuvni yangilash. Constraint bo'lmasa parallel
-        # so'rovlar dublikat yaratib, keyin `update_or_create` ni buzadi.
         constraints = [
             models.UniqueConstraint(
                 fields=['session', 'question'], name='uniq_answer_per_session_question'
@@ -124,3 +139,48 @@ class TestResult(BaseModel):
         if not total:
             return 0.0
         return round((self.correct_count / total) * 100, 2)
+
+
+class DailyTopicUsage(BaseModel):
+    user = models.ForeignKey('account.User', on_delete=models.CASCADE, related_name='daily_topic_usages')
+    topic = models.ForeignKey('catalog.Topic', on_delete=models.CASCADE, related_name='daily_usages')
+    date = models.DateField('Sana (UZT)', default=timezone.localdate)
+    sessions_started = models.PositiveSmallIntegerField('Ochilgan testlar', default=1)
+
+    class Meta:
+        ordering = ['-date', '-id']
+        verbose_name = 'Kunlik mavzu hisobi'
+        verbose_name_plural = 'Kunlik mavzu hisoblari'
+        constraints = [
+            models.UniqueConstraint(
+                fields=['user', 'topic', 'date'], name='uniq_daily_topic_usage'
+            ),
+        ]
+        indexes = [
+            models.Index(fields=['user', 'date']),
+        ]
+
+    def __str__(self):
+        return f'{self.user_id} - {self.topic_id} ({self.date})'
+
+
+class ExplanationUsage(BaseModel):
+    user = models.ForeignKey('account.User', on_delete=models.CASCADE, related_name='explanation_usages')
+    session = models.ForeignKey(TestSession, on_delete=models.CASCADE, related_name='explanation_usages')
+    date = models.DateField('Sana (UZT)', default=timezone.localdate)
+
+    class Meta:
+        ordering = ['-date', '-id']
+        verbose_name = 'Izoh ochilishi'
+        verbose_name_plural = 'Izoh ochilishlari'
+        constraints = [
+            models.UniqueConstraint(
+                fields=['user', 'session', 'date'], name='uniq_explanation_usage'
+            ),
+        ]
+        indexes = [
+            models.Index(fields=['user', 'date']),
+        ]
+
+    def __str__(self):
+        return f'{self.user_id} - session {self.session_id} ({self.date})'

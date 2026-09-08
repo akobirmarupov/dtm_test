@@ -320,6 +320,94 @@
     *{ animation:none !important; transition:none !important; }
   }
 
+  /* --- backend javobi paneli --- */
+  .result{
+    display:none;
+    margin-top:18px;
+    border:1px solid var(--line);
+    border-radius:14px;
+    background:var(--surface-2);
+    overflow:hidden;
+  }
+  .result.visible{ display:block; }
+  .result.ok{ border-color:rgba(51,209,122,0.45); }
+  .result.err{ border-color:rgba(255,90,0,0.5); }
+
+  .result-head{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:12px;
+    padding:12px 14px;
+    border-bottom:1px solid var(--line);
+  }
+  .result-title{
+    font-family:'Space Grotesk',sans-serif;
+    font-weight:600;
+    font-size:14px;
+    color:var(--text-0);
+  }
+  .result-badge{
+    font-family:'JetBrains Mono',monospace;
+    font-size:11px;
+    padding:3px 9px;
+    border-radius:999px;
+    border:1px solid var(--line);
+    color:var(--text-1);
+    white-space:nowrap;
+  }
+  .result.ok .result-badge{ color:var(--ok); border-color:rgba(51,209,122,0.45); }
+  .result.err .result-badge{ color:var(--orange-1); border-color:rgba(255,90,0,0.5); }
+
+  .result-body{
+    padding:12px 14px;
+    font-family:'JetBrains Mono',monospace;
+    font-size:12px;
+    line-height:1.65;
+    color:var(--text-1);
+    white-space:pre-wrap;
+    word-break:break-word;
+    max-height:260px;
+    overflow-y:auto;
+  }
+  .result-body b{ color:var(--text-0); font-weight:500; }
+
+  .result-actions{
+    display:none;
+    gap:8px;
+    flex-wrap:wrap;
+    padding:0 14px 14px;
+  }
+  .result.signed-in .result-actions{ display:flex; }
+
+  .ghost-btn{
+    font-family:'Inter',sans-serif;
+    font-size:12px;
+    font-weight:500;
+    color:var(--text-1);
+    background:var(--surface);
+    border:1px solid var(--line);
+    border-radius:999px;
+    padding:7px 14px;
+    cursor:pointer;
+    transition:color .15s ease, border-color .15s ease;
+  }
+  .ghost-btn:hover{ color:var(--text-0); border-color:var(--steel-2); }
+
+  .setup-warning{
+    display:none;
+    margin-bottom:16px;
+    padding:12px 14px;
+    border-radius:12px;
+    border:1px solid rgba(255,90,0,0.5);
+    background:rgba(255,90,0,0.07);
+    font-size:12.5px;
+    line-height:1.6;
+    color:var(--text-1);
+  }
+  .setup-warning.visible{ display:block; }
+  .setup-warning b{ color:var(--orange-1); }
+
   @media (max-width:480px){
     .card-inner{ padding:26px 18px 22px; }
     .wordmark{ font-size:24px; }
@@ -340,13 +428,19 @@
     <div class="card">
       <div class="card-inner">
         <div class="card-head">
-          <h1>Google orqali kirish testi</h1>
-          <p>Hisobingizni tanlang — UVENT tizimi uchun id_token shu yerda hosil bo'ladi.</p>
+          <h1>Google orqali ro'yxatdan o'tish</h1>
+          <p>Hisobingizni tanlang — token olinadi va darhol <code>/api/auth/google/</code> ga yuboriladi.</p>
+        </div>
+
+        <div class="setup-warning" id="setupWarning">
+          <b>GOOGLE_CLIENT_ID sozlanmagan.</b><br>
+          <code>.env</code> faylida <code>GOOGLE_CLIENT_ID</code> ni to'ldiring
+          va serverni qayta ishga tushiring.
         </div>
 
         <div class="signin-slot">
           <div id="g_id_onload"
-               data-client_id="491787279295-4paiavfbv21q43qh8rqtmv8jfkvp3buj.apps.googleusercontent.com"
+               data-client_id="{{ google_client_id }}"
                data-callback="handleCredentialResponse"
                data-auto_prompt="false">
           </div>
@@ -376,21 +470,163 @@
             <span id="copyLabel">Nusxalash</span>
           </button>
         </div>
+
+        <div class="result" id="result">
+          <div class="result-head">
+            <span class="result-title" id="resultTitle"></span>
+            <span class="result-badge" id="resultBadge"></span>
+          </div>
+          <div class="result-body" id="resultBody"></div>
+          <div class="result-actions" id="resultActions">
+            <button class="ghost-btn" onclick="callMe()">/api/auth/me/ ni sinash</button>
+            <button class="ghost-btn" onclick="doLogout()">Chiqish</button>
+          </div>
+        </div>
       </div>
     </div>
 
-    <div class="foot-note">Bu sahifa faqat <b>ishlab chiqish (dev)</b> muhiti uchun mo'ljallangan.</div>
+    <div class="foot-note">Bu sahifa haqiqiy ro'yxatdan o'tish oqimini bajaradi (<b>dev</b> muhiti uchun).</div>
   </div>
 
 <script>
-  let currentToken = "";
+  // ---------------------------------------------------------------------
+  // Bu sahifa haqiqiy ro'yxatdan o'tish oqimini bajaradi:
+  //   Google -> id_token -> POST /api/auth/google/ -> JWT (access/refresh)
+  // Ya'ni bu yerda ishlagan narsa mobil ilovada ham xuddi shunday ishlaydi.
+  // ---------------------------------------------------------------------
+  const CLIENT_ID = "{{ google_client_id|escapejs }}";
+  const AUTH_URL = "/api/auth/google/";
+  const ME_URL = "/api/auth/me/";
+  const LOGOUT_URL = "/api/auth/logout/";
 
-  function handleCredentialResponse(response) {
+  let currentToken = "";
+  let access = "";
+  let refresh = "";
+
+  document.addEventListener("DOMContentLoaded", () => {
+    if (!CLIENT_ID) {
+      document.getElementById("setupWarning").classList.add("visible");
+    }
+  });
+
+  function showResult(state, title, badge, body, signedIn) {
+    const box = document.getElementById("result");
+    box.className = "result visible " + state + (signedIn ? " signed-in" : "");
+    document.getElementById("resultTitle").innerText = title;
+    document.getElementById("resultBadge").innerText = badge;
+    document.getElementById("resultBody").innerHTML = body;
+  }
+
+  function esc(value) {
+    return String(value).replace(/[&<>]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;"}[c]));
+  }
+
+  // Google tugmasi shu funksiyani chaqiradi (data-callback).
+  async function handleCredentialResponse(response) {
     currentToken = response.credential;
+
     document.getElementById("output").innerText = currentToken;
     document.getElementById("tokenLen").innerText = currentToken.length + " belgi";
     document.getElementById("tokenFrame").classList.add("visible");
     document.getElementById("status").classList.add("show");
+
+    showResult("", "Backendga yuborilmoqda…", AUTH_URL, "Kutilmoqda…", false);
+
+    try {
+      const res = await fetch(AUTH_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id_token: currentToken,
+          // Mobil ilova shu joyda qurilma ma'lumotini ham yuboradi.
+          device: {
+            device_id: deviceId(),
+            platform: "web",
+            model_name: navigator.userAgent.slice(0, 100)
+          }
+        })
+      });
+
+      const data = await res.json().catch(() => ({}));
+
+      if (!res.ok) {
+        showResult("err", "Xatolik", res.status + " " + res.statusText,
+          "<b>Javob:</b>\n" + esc(JSON.stringify(data, null, 2)), false);
+        return;
+      }
+
+      access = data.access || "";
+      refresh = data.refresh || "";
+      const user = data.user || {};
+
+      const title = data.is_new_user
+        ? "Ro'yxatdan o'tdingiz 🎉"
+        : "Tizimga kirdingiz";
+
+      showResult("ok", title, res.status + " " + (data.is_new_user ? "yangi" : "mavjud"),
+        "<b>Email:</b> " + esc(user.email || "—") + "\n" +
+        "<b>Ism:</b> " + esc(user.full_name || "—") + "\n" +
+        "<b>Rol:</b> " + esc(user.role_display || user.role || "—") + "\n" +
+        "<b>Til:</b> " + esc(user.language || "—") + "\n" +
+        "<b>XP:</b> " + esc(user.xp_total ?? 0) + "\n\n" +
+        "<b>access:</b> " + esc((access || "").slice(0, 48)) + "…\n" +
+        "<b>refresh:</b> " + esc((refresh || "").slice(0, 48)) + "…",
+        true);
+
+    } catch (err) {
+      showResult("err", "Serverga ulanib bo'lmadi", "network",
+        esc(err.message) + "\n\nServer ishlab turibdimi? (python manage.py runserver)",
+        false);
+    }
+  }
+
+  // Bir brauzer = bir qurilma. `/api/auth/devices/` uchun barqaror id.
+  function deviceId() {
+    let id = localStorage.getItem("uvent_device_id");
+    if (!id) {
+      id = "web-" + Math.random().toString(36).slice(2, 12);
+      localStorage.setItem("uvent_device_id", id);
+    }
+    return id;
+  }
+
+  // Olingan access token haqiqatan ishlashini tekshiradi.
+  async function callMe() {
+    if (!access) return;
+    try {
+      const res = await fetch(ME_URL, { headers: { "Authorization": "Bearer " + access } });
+      const data = await res.json().catch(() => ({}));
+      showResult(res.ok ? "ok" : "err", "GET /api/auth/me/", res.status + " " + res.statusText,
+        esc(JSON.stringify(data, null, 2)), true);
+    } catch (err) {
+      showResult("err", "GET /api/auth/me/", "network", esc(err.message), true);
+    }
+  }
+
+  async function doLogout() {
+    if (!refresh) return;
+    try {
+      const res = await fetch(LOGOUT_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Authorization": "Bearer " + access },
+        body: JSON.stringify({ refresh: refresh, device_id: deviceId() })
+      });
+      const data = await res.json().catch(() => ({}));
+
+      access = ""; refresh = ""; currentToken = "";
+      document.getElementById("tokenFrame").classList.remove("visible");
+      document.getElementById("status").classList.remove("show");
+
+      showResult(res.ok ? "ok" : "err", "Chiqish", res.status + " " + res.statusText,
+        esc(JSON.stringify(data, null, 2)), false);
+
+      // Google keyingi safar hisob tanlashni qayta so'rasin.
+      if (window.google && google.accounts && google.accounts.id) {
+        google.accounts.id.disableAutoSelect();
+      }
+    } catch (err) {
+      showResult("err", "Chiqish", "network", esc(err.message), false);
+    }
   }
 
   function copyToken(){

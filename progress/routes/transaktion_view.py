@@ -1,5 +1,3 @@
-# progress/routes/transaktion_view.py
-
 import logging
 
 from datetime import timedelta
@@ -18,11 +16,7 @@ from common.permissions import IsStudent
 from common.pagination import StandardResultsPagination
 
 from progress.models import XPTransaction
-from progress.routes.serializers import (
-    XPTransactionSerializer,
-    XPSummarySerializer,
-    LeaderboardEntrySerializer,
-)
+from progress.routes.serializers import XPTransactionSerializer,XPSummarySerializer,LeaderboardEntrySerializer
 from progress.filters import XPTransactionFilter
 
 logger = logging.getLogger(__name__)
@@ -36,8 +30,6 @@ LEADERBOARD_CACHE_KEY = 'progress:leaderboard:weekly'
 LEADERBOARD_LIMIT = 50
 
 
-# `XPTransactionFilter` qo'lda qo'llaniladi (bu oddiy APIView, `queryset` atributi yo'q),
-# shuning uchun drf-spectacular filtrlarni o'zi topa olmaydi — quyida qo'lda beriladi.
 XP_TRANSACTION_FILTER_PARAMETERS = [
     OpenApiParameter('user', OpenApiTypes.INT),
     OpenApiParameter('source', OpenApiTypes.STR, enum=XPTransaction.Source.values),
@@ -83,7 +75,7 @@ class XPSummaryAPIView(APIView):
             logger.debug('XP summary: cache hit user_id=%s', request.user.id)
             return Response(cached_data, status=status.HTTP_200_OK)
 
-        today = timezone.now().date()
+        today = timezone.localdate()
         week_start = today - timedelta(days=today.weekday())  # dushanbadan boshlab
 
         qs = XPTransaction.objects.filter(user=request.user)
@@ -134,7 +126,21 @@ class WeeklyLeaderboardAPIView(APIView):
 
     @staticmethod
     def _build_leaderboard():
-        today = timezone.now().date()
+        from rating.services import leaderboard_rows
+
+        return [
+            {
+                'rank': row.rank,
+                'user_id': row.user_id,
+                'nickname': row.user.full_name or 'Anonim',
+                'xp_this_week': row.xp,
+            }
+            for row in leaderboard_rows('weekly', LEADERBOARD_LIMIT)
+        ]
+
+    @staticmethod
+    def _build_leaderboard_legacy():
+        today = timezone.localdate()
         week_start = today - timedelta(days=today.weekday())
 
         rows = (
