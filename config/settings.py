@@ -574,6 +574,7 @@ UNFOLD = {
                 "collapsible": False,
                 "items": [
                     {"title": "Foydalanuvchilar", "icon": "group", "link": "/admin/account/user/"},
+                    {"title": "Qurilmalar", "icon": "devices", "link": "/admin/account/device/"},
                 ],
             },
             {
@@ -582,6 +583,7 @@ UNFOLD = {
                 "collapsible": True,
                 "items": [
                     {"title": "Fanlar", "icon": "menu_book", "link": "/admin/catalog/subject/"},
+                    {"title": "Sinflar / Kitoblar", "icon": "shelves", "link": "/admin/catalog/grade/"},
                     {"title": "Mavzular", "icon": "topic", "link": "/admin/catalog/topic/"},
                     {"title": "Savollar", "icon": "quiz", "link": "/admin/catalog/question/"},
                 ],
@@ -592,8 +594,11 @@ UNFOLD = {
                 "collapsible": True,
                 "items": [
                     {"title": "Test sessiyalari", "icon": "assignment", "link": "/admin/testengine/testsession/"},
+                    {"title": "Sessiya savollari", "icon": "list_alt", "link": "/admin/testengine/sessionquestion/"},
                     {"title": "Javoblar", "icon": "fact_check", "link": "/admin/testengine/answer/"},
                     {"title": "Natijalar", "icon": "leaderboard", "link": "/admin/testengine/testresult/"},
+                    {"title": "Kunlik mavzu hisobi", "icon": "event_repeat", "link": "/admin/testengine/dailytopicusage/"},
+                    {"title": "Izoh ochilishlari", "icon": "lightbulb", "link": "/admin/testengine/explanationusage/"},
                 ],
             },
             {
@@ -604,6 +609,8 @@ UNFOLD = {
                     {"title": "Takrorlash kartalari", "icon": "style", "link": "/admin/progress/reviewcard/"},
                     {"title": "Streaklar", "icon": "local_fire_department", "link": "/admin/progress/streak/"},
                     {"title": "XP tranzaksiyalari", "icon": "military_tech", "link": "/admin/progress/xptransaction/"},
+                    {"title": "Yutuqlar", "icon": "workspace_premium", "link": "/admin/progress/achievement/"},
+                    {"title": "Qo'lga kiritilgan yutuqlar", "icon": "emoji_events", "link": "/admin/progress/userachievement/"},
                 ],
             },
             {
@@ -635,6 +642,8 @@ UNFOLD = {
                     {"title": "Mavzu reytinglari", "icon": "grade", "link": "/admin/rating/topicrating/"},
                     {"title": "Fan reytinglari", "icon": "assessment", "link": "/admin/rating/subjectrating/"},
                     {"title": "Leaderboard", "icon": "leaderboard", "link": "/admin/rating/leaderboard/"},
+                    {"title": "Ligalar", "icon": "shield", "link": "/admin/rating/league/"},
+                    {"title": "Liga a'zoliklari", "icon": "groups", "link": "/admin/rating/leaguemembership/"},
                 ],
             },
             {
