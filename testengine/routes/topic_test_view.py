@@ -107,6 +107,17 @@ class TopicStartTestAPIView(TopicTestBaseView):
         serializer.is_valid(raise_exception=True)
         data = serializer.validated_data
 
+        if data['mode'] == TestSession.Mode.EXAM and not entitlements.can_use_exam_mode:
+            return Response(
+                {
+                    "detail": "Imtihon rejimi sizning tarifingizda mavjud emas. "
+                              "«O'rganish» rejimida test ishlashingiz mumkin.",
+                    "code": "exam_mode_unavailable",
+                    "upgrade_required": True,
+                },
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
         tiers = tiers_for(entitlements, topic.available_question_count)
         if not tiers:
             return Response(

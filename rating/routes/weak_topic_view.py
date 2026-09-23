@@ -11,13 +11,14 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from common.permissions import CanViewAnalytics
 from common.throttles import BurstUserRateThrottle
 from rating.routes.serializers import WeakTopicSerializer
 from rating.services import weak_topics
 
 
 class WeakTopicListAPIView(APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, CanViewAnalytics]
     throttle_classes = [BurstUserRateThrottle]
 
     @extend_schema(

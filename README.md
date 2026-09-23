@@ -62,6 +62,61 @@ python manage.py setup_plans     # Free / Pro-Basic / Pro-Full tariflari
 Tariflarning narxi va cheklovlari shundan keyin **admin panelidan**
 boshqariladi — kodga qaytish shart emas.
 
+### Tariflar va ptichkalar
+
+Kodda birorta tarif nomi yozilmagan: admin xohlagancha bosqich yaratadi
+(«Basic», «Pro», «Premium», «Premium Max» — farqi yo'q), nomini o'zi qo'yadi
+va cheklovlarni belgilaydi. Qoida hamma joyda bir xil:
+
+| Qiymat | Ma'nosi |
+|---|---|
+| bo'sh (`null`) | cheksiz |
+| `0` | imkoniyat bu tarifda yopiq |
+| `N` | kuniga (yoki oyiga) N marta |
+
+Ptichkalar ro'yxati kodda bitta joyda — [`billing/features.py`](billing/features.py).
+Frontend admin paneli uni `GET /billing/plan/features/` orqali oladi va formani
+o'zi chizadi, shuning uchun yangi cheklov qo'shilganda frontendga tegilmaydi.
+Javobdagi `enforced: false` — ptichka bor, lekin ortidagi kod hali yozilmagan.
+
+Tarif yaratish/tahrirlash: `POST /billing/plan/`, `PATCH /billing/plan/<id>/`
+(faqat admin).
+
+Ptichka ortidagi endpointlar:
+
+| Imkoniyat | Endpoint |
+|---|---|
+| DTM blok imtihoni | `POST /testengine/mock-exams/`, `.../<id>/finish/` |
+| Natijalarni yuklab olish | `GET /testengine/results/export/` (.xlsx) |
+| Mentor nazorati | `POST /dashboard/mentor/students/` |
+| Prioritet qo'llab-quvvatlash | `GET /billing/payments/info/` |
+
+### Kirish testi (Intro)
+
+Ilovaga birinchi marta kirgan, hali ro'yxatdan o'tmagan odam uchun tasodifiy
+4 ta mantiqiy/psixologik savol. Savollar DTM katalogidan ALOHIDA
+([`intro/models.py`](intro/models.py)) — ular reytingga, mavzu sanog'iga va
+statistikaga qo'shilmaydi. Bazada 30 ta savol bo'ladimi, 500 tami — har safar
+tasodifiy 4 tasi chiqadi.
+
+Savol matn, rasm va video bilan bo'lishi mumkin. Video fayl 50 MB gacha,
+lekin **server diski redeploy'da tozalanadi** — shuning uchun `video_url`
+(YouTube havolasi) ishonchliroq. Ro'yxatdan o'tgan foydalanuvchiga bu test
+ko'rsatilmaydi (403).
+
+### Foydalanuvchilarni boshqarish
+
+Admin o'z panelidan foydalanuvchilarni ko'radi va bloklaydi:
+`/dashboard/admin/users/`. Bloklash — `is_active=False`; bunday foydalanuvchi
+tokeni qo'lida bo'lsa ham API'ga kira olmaydi. Kim, qachon va nega bloklagani
+saqlanadi. O'zini va boshqa administratorni bloklash mumkin emas.
+
+**AI tutor hali ishlamaydi.** Ulash joyi tayyor: `generate()` ichiga LLM
+chaqiruvini yozib, sozlamaga
+`EXPLANATION_SERVICE = 'testengine.explanations.AIExplanationService'`
+qo'shilsa ishlaydi va faqat shu ptichkasi bor tarifga beriladi
+([testengine/explanations.py](testengine/explanations.py)).
+
 Kontent bulk import qilingandan keyin (`bulk_create`, SQL, `loaddata` —
 bular signal chaqirmaydi):
 

@@ -2,7 +2,10 @@ from django.contrib import admin
 
 from unfold.admin import ModelAdmin, StackedInline, TabularInline
 
-from .models import Answer,DailyTopicUsage,ExplanationUsage,SessionQuestion,TestResult,TestSession
+from .models import (
+    Answer, DailyTopicUsage, ExplanationUsage, MockExam, SessionQuestion,
+    TestResult, TestSession,
+)
 
 
 
@@ -109,3 +112,25 @@ class ExplanationUsageAdmin(ModelAdmin):
 
     def has_add_permission(self, request):
         return False
+
+
+@admin.register(MockExam)
+class MockExamAdmin(ModelAdmin):
+    """DTM blok imtihoni — bir nechta fan, bitta umumiy taymer."""
+
+    list_display = (
+        "id", "user", "subject_count", "time_limit_seconds",
+        "expires_at", "finished_at", "auto_finished",
+    )
+    list_filter = ("auto_finished", "finished_at")
+    search_fields = ("user__email", "user__full_name")
+    autocomplete_fields = ("user",)
+    ordering = ("-created_at",)
+    readonly_fields = ("created_at", "updated_at")
+
+    def get_queryset(self, request):
+        return super().get_queryset(request).prefetch_related("sessions")
+
+    @admin.display(description="Fanlar")
+    def subject_count(self, obj):
+        return obj.sessions.count()

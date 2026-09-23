@@ -12,6 +12,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from billing.features import feature_catalog
 from billing.filters import PlanFilter
 from billing.models import Plan
 from billing.routes.serializers import (
@@ -189,4 +190,28 @@ class PlanDetailAPIView(APIView):
         return Response(
             {"detail": f"«{plan.name}» plani muvaffaqiyatli faolsizlantirildi."},
             status=status.HTTP_200_OK,
+        )
+
+
+class PlanFeatureCatalogAPIView(APIView):
+    """Admin panel formasi uchun ptichkalar ro'yxati.
+
+    Frontend tarif yaratish oynasini shu javobdan chizadi: guruhlar bo'yicha
+    ptichka va raqam maydonlari. Backendga yangi cheklov qo'shilsa, u shu
+    ro'yxatga tushadi va frontend kodiga tegilmaydi.
+    """
+
+    permission_classes = [IsAdmin]
+    throttle_classes = [BurstUserRateThrottle]
+
+    @extend_schema(
+        operation_id='billing_plan_features',
+        responses={200: dict},
+        tags=['Plan'],
+        description="Tarifga qo'yish mumkin bo'lgan cheklovlar ro'yxati "
+                    "(ptichka va raqam maydonlari), so'rov tilida.",
+    )
+    def get(self, request):
+        return Response(
+            feature_catalog(resolve_language(request)), status=status.HTTP_200_OK
         )

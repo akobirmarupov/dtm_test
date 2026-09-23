@@ -17,8 +17,14 @@ class PlanSerializer(LanguageContextMixin, serializers.ModelSerializer):
     class Meta:
         model = Plan
         fields = [
-            'id', 'name', 'description', 'price', 'price_display', 'is_free',
-            'duration_days', 'is_active', 'translations',
+            'id', 'code', 'name', 'description', 'price', 'price_display', 'is_free',
+            'duration_days', 'is_active', 'is_pro', 'translations',
+            # Cheklovlar — frontend tarif kartasida «nima kiradi» ni shulardan chizadi.
+            'daily_topic_limit', 'max_question_count', 'can_choose_question_count',
+            'can_use_exam_mode', 'can_view_explanations', 'explanation_limit_per_day',
+            'mistake_test_daily_limit', 'review_cards_daily_limit',
+            'can_view_analytics', 'history_days', 'streak_freezes_per_month',
+            'features',
         ]
         read_only_fields = fields
 
@@ -40,14 +46,25 @@ class PlanSerializer(LanguageContextMixin, serializers.ModelSerializer):
 
 
 class PlanWriteSerializer(serializers.ModelSerializer):
-    """Admin tarif yaratadi/tahrirlaydi."""
+    """Admin tarif yaratadi/tahrirlaydi.
+
+    Nom, narx va barcha cheklovlar shu yerdan kiradi — kodda birorta tarif
+    nomi qattiq yozilmagan, shuning uchun admin nechta tarif xohlasa shuncha
+    yarata oladi. Ptichkalar ro'yxatini frontend `GET /billing/plan/features/`
+    dan oladi.
+    """
 
     class Meta:
         model = Plan
         fields = [
-            'id', 'name', 'name_ru', 'name_en',
+            'id', 'code', 'name', 'name_ru', 'name_en',
             'description', 'description_ru', 'description_en',
-            'price', 'duration_days', 'is_active',
+            'price', 'duration_days', 'is_active', 'is_pro',
+            'daily_topic_limit', 'max_question_count', 'can_choose_question_count',
+            'can_use_exam_mode', 'can_view_explanations', 'explanation_limit_per_day',
+            'mistake_test_daily_limit', 'review_cards_daily_limit',
+            'can_view_analytics', 'history_days', 'streak_freezes_per_month',
+            'features',
         ]
         read_only_fields = ['id']
 
@@ -66,6 +83,48 @@ class PlanWriteSerializer(serializers.ModelSerializer):
         if value < 1:
             raise serializers.ValidationError("Muddat kamida 1 kun bo'lishi kerak.")
         return value
+
+    def validate_max_question_count(self, value):
+        """Savol soni tayyor to'plamlardan biri bo'lishi kerak (20, 25, ... 60).
+
+        Oraliq qiymat (masalan 33) qo'yilsa, foydalanuvchiga umuman variant
+        ko'rinmay qolishi mumkin — shuning uchun oldindan to'xtatamiz.
+        """
+        from testengine.models import QUESTION_COUNT_TIERS
+
+        if value not in QUESTION_COUNT_TIERS:
+            tiers = ', '.join(str(tier) for tier in QUESTION_COUNT_TIERS)
+            raise serializers.ValidationError(
+                f"Faqat quyidagi qiymatlardan biri bo'lishi mumkin: {tiers}."
+            )
+        return value
+
+    def validate_features(self, value):
+        if value in (None, ''):
+            return {}
+        if not isinstance(value, dict):
+            raise serializers.ValidationError(
+                "«Qo'shimcha imkoniyatlar» kalit-qiymat ko'rinishida bo'lishi kerak."
+            )
+        return value
+
+    def validate(self, attrs):
+        """Izoh limiti izohlar yopiq tarifda ma'noga ega emas."""
+        instance = getattr(self, 'instance', None)
+
+        def current(name):
+            if name in attrs:
+                return attrs[name]
+            return getattr(instance, name, None)
+
+        if not current('can_view_explanations') and current('explanation_limit_per_day'):
+            raise serializers.ValidationError({
+                'explanation_limit_per_day': (
+                    "Avval «Yechim izohlarini ko'radi» ptichkasini belgilang, "
+                    "so'ng kunlik limit qo'ying."
+                ),
+            })
+        return attrs
 
 
 class SubscriptionSerializer(LanguageContextMixin, serializers.ModelSerializer):
@@ -180,6 +239,7 @@ class PaymentInfoSerializer(serializers.Serializer):
     message = serializers.CharField()
     admin_telegram = serializers.CharField()
     contact = ContactPayloadSerializer()
+    priority_support = serializers.BooleanField()
 
 
 class DetailSerializer(serializers.Serializer):

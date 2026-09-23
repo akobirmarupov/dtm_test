@@ -8,7 +8,11 @@ from billing.routes.payment.views import (
     PaymentInfoAPIView,
     PaymentRejectAPIView,
 )
-from billing.routes.plan.views import PlanCreateListAPIView, PlanDetailAPIView
+from billing.routes.plan.views import (
+    PlanCreateListAPIView,
+    PlanDetailAPIView,
+    PlanFeatureCatalogAPIView,
+)
 from billing.routes.subscription.views import (
     SubscriptionCancelAPIView,
     SubscriptionCurrentAPIView,
@@ -19,6 +23,8 @@ from billing.routes.subscription.views import (
 urlpatterns = [
     # Tariflar (0 so'm / 50 000 so'm / 70 000 so'm ...)
     path('plan/', PlanCreateListAPIView.as_view(), name='plan-list'),
+    # Admin panel formasi uchun ptichkalar ro'yxati.
+    path('plan/features/', PlanFeatureCatalogAPIView.as_view(), name='plan-features'),
     path('plan/<int:pk>/', PlanDetailAPIView.as_view(), name='plan-detail'),
 
     # Obunalar

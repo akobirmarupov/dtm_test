@@ -6,7 +6,7 @@ from rest_framework import status
 from rest_framework.generics import get_object_or_404
 from drf_spectacular.utils import extend_schema
 
-from common.permissions import IsStudent
+from common.permissions import CanViewAnalytics, IsStudent
 from common.pagination import StandardResultsPagination
 
 from rating.models import SubjectRating
@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 
 
 class SubjectRatingListAPIView(APIView):
-    permission_classes = [IsStudent]
+    permission_classes = [IsStudent, CanViewAnalytics]
     pagination_class = StandardResultsPagination
 
     @extend_schema(responses=SubjectRatingSerializer(many=True))
@@ -33,7 +33,7 @@ class SubjectRatingListAPIView(APIView):
 
 
 class SubjectRatingDetailAPIView(APIView):
-    permission_classes = [IsStudent]
+    permission_classes = [IsStudent, CanViewAnalytics]
 
     @extend_schema(responses=SubjectRatingSerializer)
     def get(self, request, subject_id):

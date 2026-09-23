@@ -7,6 +7,12 @@ from dashboard.routes.mentorstudent_view import (
 )
 from dashboard.routes.mentoralert_view import MentorAlertListCreateAPIView, MentorAlertResolveAPIView
 from dashboard.routes.analyticssummary_view import AnalyticsSummaryListAPIView, AnalyticsSummaryDetailAPIView
+from dashboard.routes.adminuser_view import (
+    AdminUserBlockAPIView,
+    AdminUserDetailAPIView,
+    AdminUserListAPIView,
+    AdminUserUnblockAPIView,
+)
 from dashboard.routes.dashboardaccess_view import (
     MentorDashboardSummaryAPIView,
     AdminDashboardSummaryAPIView,
@@ -26,6 +32,12 @@ urlpatterns = [
     # Dashboard summary (jonli statistikasi + DashboardAccess logi)
     path('mentor/summary/', MentorDashboardSummaryAPIView.as_view(), name='mentor-dashboard-summary'),
     path('admin/summary/', AdminDashboardSummaryAPIView.as_view(), name='admin-dashboard-summary'),
+
+    # Admin: foydalanuvchilarni ko'rish va bloklash
+    path('admin/users/', AdminUserListAPIView.as_view(), name='admin-user-list'),
+    path('admin/users/<int:pk>/', AdminUserDetailAPIView.as_view(), name='admin-user-detail'),
+    path('admin/users/<int:pk>/block/', AdminUserBlockAPIView.as_view(), name='admin-user-block'),
+    path('admin/users/<int:pk>/unblock/', AdminUserUnblockAPIView.as_view(), name='admin-user-unblock'),
 
     # AnalyticsSummary
     path('admin/analytics/', AnalyticsSummaryListAPIView.as_view(), name='analytics-summary-list'),

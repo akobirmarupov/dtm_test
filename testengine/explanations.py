@@ -55,7 +55,34 @@ class StaticExplanationService(ExplanationService):
         return Explanation(text=text, image_url=image_url, source='static')
 
 
+def ai_tutor_allowed(request) -> bool:
+    """Foydalanuvchining tarifida «AI tutor» ptichkasi bormi.
+
+    Statik izoh hammaga (tarifi ruxsat bersa) ochiq, AI esa faqat shu
+    ptichkasi bor tarifga — shuning uchun tekshiruv aynan shu yerda.
+    """
+    if request is None:
+        return False
+    from billing.entitlements import entitlements_for_request
+    return bool(entitlements_for_request(request).feature('ai_tutor', False))
+
+
 class AIExplanationService(StaticExplanationService):
+    """AI tutor uchun tayyorlangan joy — hozir ishlamaydi.
+
+    Yoqish uchun ikki qadam kerak:
+
+    1. `generate()` ichida LLM chaqiruvini yozish;
+    2. sozlamalarga
+       ``EXPLANATION_SERVICE = 'testengine.explanations.AIExplanationService'``
+       qo'shish.
+
+    Shundan keyin ham AI izohi faqat tarifida `ai_tutor` ptichkasi bor
+    foydalanuvchiga boradi; qolganlar statik izohni ko'raveradi. Shuning
+    uchun ptichka katalogda `enforced: false` bilan turibdi — belgilash
+    mumkin, lekin hozircha hech narsani o'zgartirmaydi.
+    """
+
     def generate(self, question, answer, language) -> str | None:
         # TODO: LLM chaqiruvi. Kirish: savol matni, variantlar, to'g'ri javob,
         # foydalanuvchi tanlagan variant. Chiqish: qisqa tushuntirish.
@@ -68,6 +95,9 @@ class AIExplanationService(StaticExplanationService):
         )
         if static is not None:
             return static
+
+        if not ai_tutor_allowed(request):
+            return None
 
         generated = self.generate(question, answer, language)
         if not generated:

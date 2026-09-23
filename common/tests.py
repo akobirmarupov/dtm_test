@@ -28,7 +28,7 @@ class AdminCompletenessTests(TestCase):
 
     APPS = {
         'account', 'catalog', 'testengine', 'progress',
-        'rating', 'billing', 'notifications', 'dashboard',
+        'rating', 'billing', 'notifications', 'dashboard', 'intro',
     }
 
     def sidebar_links(self):

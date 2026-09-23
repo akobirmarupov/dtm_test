@@ -8,7 +8,8 @@ from .models import Payment, Plan, Subscription
 class PlanAdmin(ModelAdmin):
     list_display = (
         "id", "name", "code", "price", "duration_days", "is_pro",
-        "daily_topic_limit", "can_view_explanations", "is_active", "created_at",
+        "daily_topic_limit", "can_view_explanations", "can_view_analytics",
+        "is_active", "created_at",
     )
     list_filter = ("is_active", "is_pro", "can_view_explanations")
     search_fields = ("name", "name_ru", "name_en", "code")
@@ -18,13 +19,19 @@ class PlanAdmin(ModelAdmin):
         ("Asosiy", {"fields": ("code", "price", "duration_days", "is_active")}),
         ("Imkoniyatlar", {
             "fields": (
-                "is_pro", "daily_topic_limit", "max_question_count",
-                "can_view_explanations", "explanation_limit_per_day", "features",
+                "is_pro",
+                "daily_topic_limit", "max_question_count", "can_choose_question_count",
+                "can_use_exam_mode",
+                "can_view_explanations", "explanation_limit_per_day",
+                "mistake_test_daily_limit", "review_cards_daily_limit",
+                "can_view_analytics", "history_days", "streak_freezes_per_month",
+                "features",
             ),
             "description": (
                 "Narx ham, cheklovlar ham SHU YERDA boshqariladi — kodda emas. "
-                "«Kunlik mavzu limiti» bo'sh qoldirilsa cheksiz. Pro tarifda "
-                "limit umuman qo'llanilmaydi."
+                "Raqamli maydon bo'sh qoldirilsa CHEKSIZ, 0 qo'yilsa imkoniyat "
+                "YOPIQ degani. «Pullik tarif» ptichkasi hech narsani bekor "
+                "qilmaydi — u faqat belgi."
             ),
         }),
         ("O'zbekcha", {"fields": ("name", "description")}),

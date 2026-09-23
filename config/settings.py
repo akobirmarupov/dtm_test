@@ -78,6 +78,7 @@ DJANGO_APPS = [
 LOCAL_APPS = [
     'account',
     'common',
+    'intro',
     'notifications',
     'billing',
     'progress',
@@ -578,6 +579,14 @@ UNFOLD = {
                 ],
             },
             {
+                "title": "Kirish testi (Intro)",
+                "separator": True,
+                "collapsible": True,
+                "items": [
+                    {"title": "Kirish testi savollari", "icon": "psychology", "link": "/admin/intro/introquestion/"},
+                ],
+            },
+            {
                 "title": "Fanlar bazasi (Catalog)",
                 "separator": True,
                 "collapsible": True,
@@ -599,6 +608,7 @@ UNFOLD = {
                     {"title": "Natijalar", "icon": "leaderboard", "link": "/admin/testengine/testresult/"},
                     {"title": "Kunlik mavzu hisobi", "icon": "event_repeat", "link": "/admin/testengine/dailytopicusage/"},
                     {"title": "Izoh ochilishlari", "icon": "lightbulb", "link": "/admin/testengine/explanationusage/"},
+                    {"title": "Blok imtihonlari", "icon": "history_edu", "link": "/admin/testengine/mockexam/"},
                 ],
             },
             {

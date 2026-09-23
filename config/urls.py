@@ -28,6 +28,7 @@ urlpatterns = [
 
     path("api/", include("account.urls")),
     path("catalog/", include("catalog.routes.urls")),
+    path("intro/", include("intro.routes.urls")),
     path("testengine/", include("testengine.routes.urls")),
     path("progress/", include("progress.routes.urls")),
     path("billing/", include("billing.routes.urls")),

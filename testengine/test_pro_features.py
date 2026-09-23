@@ -157,17 +157,33 @@ class EntitlementTests(TestCase):
 
         self.assertEqual(entitlements_for(user).daily_topic_limit, 7)
 
-    def test_pro_plan_removes_the_topic_limit(self):
+    def test_paid_plan_keeps_the_limit_the_admin_entered(self):
+        """`is_pro` cheklovni bekor qilmaydi — u faqat «pullik» degan belgi.
+
+        Shu tufayli admin xohlagancha bosqich yarata oladi: pullik, lekin
+        kuniga 20 ta mavzu bilan cheklangan tarif ham mumkin.
+        """
         plan = make_plan(
-            'Pro', Decimal('35000'), code='pro_basic', is_pro=True, daily_topic_limit=4,
+            'Pullik', Decimal('35000'), code='paid_limited', is_pro=True, daily_topic_limit=20,
         )
         user = make_user('pro@example.com')
         activate_plan(user, plan)
 
         entitlements = entitlements_for(user)
         self.assertTrue(entitlements.is_pro)
-        # `is_pro` limitni bekor qiladi — tarifda son turgan bo'lsa ham.
+        self.assertEqual(entitlements.daily_topic_limit, 20)
+
+    def test_empty_limit_means_unlimited(self):
+        """Cheksiz tarif — limit maydoni bo'sh qoldirilgani bilan beriladi."""
+        plan = make_plan(
+            'Cheksiz', Decimal('59000'), code='unlimited', is_pro=True, daily_topic_limit=None,
+        )
+        user = make_user('unlimited@example.com')
+        activate_plan(user, plan)
+
+        entitlements = entitlements_for(user)
         self.assertIsNone(entitlements.daily_topic_limit)
+        self.assertTrue(entitlements.has_unlimited_topics)
 
     def test_expired_subscription_drops_back_to_free(self):
         plan = make_plan('Pro', Decimal('35000'), code='pro_full', is_pro=True)

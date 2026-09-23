@@ -14,6 +14,9 @@ from catalog.models import Question
 from common.i18n import resolve_language
 from common.pagination import StandardResultsPagination
 from common.throttles import BurstUserRateThrottle
+from common.usage import (
+    Feature, consume_if_limited, daily_limit_access, limit_payload,
+)
 from testengine.models import MIN_QUESTION_COUNT, Answer, TestSession
 from testengine.routes.serializers import (
     QuestionForTestSerializer,
@@ -99,11 +102,41 @@ class MistakeStartTestAPIView(APIView):
                 'detail': serializers.CharField(),
                 'code': serializers.CharField(),
             }),
+            403: inline_serializer(name='MistakeStartTestLimit', fields={
+                'detail': serializers.CharField(),
+                'code': serializers.CharField(),
+                'limit': serializers.IntegerField(allow_null=True),
+                'used_today': serializers.IntegerField(),
+                'remaining_today': serializers.IntegerField(allow_null=True),
+                'reset_at': serializers.DateTimeField(),
+                'upgrade_required': serializers.BooleanField(),
+            }),
         },
         tags=['TestSession'],
     )
     def post(self, request):
         entitlements = entitlements_for_request(request)
+
+        access = daily_limit_access(
+            request.user, Feature.MISTAKE_TEST,
+            entitlements.mistake_test_daily_limit,
+            closed_detail=(
+                "Xatolar ustida test tuzish sizning tarifingizda mavjud emas. "
+                "Xatolaringiz ro'yxatini ko'rishingiz mumkin."
+            ),
+            reached_detail=(
+                "Bugun xatolar ustida {limit} ta test tuzdingiz — kunlik "
+                "limitingiz shuncha. Ertaga 00:00 dan keyin yangilanadi."
+            ),
+            code='mistake_test_limit_reached',
+        )
+        if not access['allowed']:
+            logger.info(
+                'Xatolar testi limiti: user_id=%s limit=%s used=%s',
+                request.user.id, access['limit'], access['used'],
+            )
+            return Response(limit_payload(access), status=status.HTTP_403_FORBIDDEN)
+
         try:
             count = int(request.data.get('count') or 20)
         except (TypeError, ValueError):
@@ -145,6 +178,10 @@ class MistakeStartTestAPIView(APIView):
             SessionQuestion(session=session, question=question, order=order)
             for order, question in enumerate(questions, start=1)
         ])
+
+        consume_if_limited(
+            request.user, Feature.MISTAKE_TEST, entitlements.mistake_test_daily_limit
+        )
 
         logger.info(
             'Xatolar ustida test: session_id=%s savollar=%s user_id=%s',

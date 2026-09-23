@@ -28,6 +28,7 @@ from testengine.models import (
     MAX_QUESTION_COUNT,
     PRACTICE_MAX_SECONDS_PER_QUESTION,
     Answer,
+    MockExam,
     SessionQuestion,
     TestResult,
     TestSession,
@@ -620,3 +621,161 @@ def build_review(session):
         })
 
     return review
+
+
+# ---------------------------------------------------------------------------
+# DTM blok imtihoni
+# ---------------------------------------------------------------------------
+class NotEnoughQuestionsForExam(Exception):
+    """Tanlangan fanlardan birida yetarli savol yo'q."""
+
+    def __init__(self, subject):
+        super().__init__(str(subject))
+        self.subject = subject
+
+
+@transaction.atomic
+def create_mock_exam(user, subjects, question_count,
+                     seconds_per_question=EXAM_SECONDS_PER_QUESTION):
+    """Har bir fan uchun bitta imtihon sessiyasi ochadi.
+
+    Taymer YAGONA: barcha sessiyalar bir vaqtda tugaydi, xuddi haqiqiy
+    imtihondagidek. Shuning uchun bir fanda tez ishlagan vaqt boshqasiga
+    qoladi.
+    """
+    total_seconds = len(subjects) * int(question_count) * seconds_per_question
+    now = timezone.now()
+
+    exam = MockExam.objects.create(
+        user=user,
+        time_limit_seconds=total_seconds,
+        expires_at=now + timedelta(seconds=total_seconds),
+    )
+
+    for order, subject in enumerate(subjects, start=1):
+        session = create_session(
+            user=user,
+            subject=subject,
+            mode=TestSession.Mode.EXAM,
+            question_count=question_count,
+            time_limit_seconds=total_seconds,
+        )
+        if session is None:
+            raise NotEnoughQuestionsForExam(subject)
+
+        # Barcha sessiyalar imtihon bilan bir paytda tugasin — `create_session`
+        # har biriga o'z soniyasini qo'yadi, farq bir necha soniya bo'lsa ham
+        # foydalanuvchiga g'alati ko'rinadi.
+        TestSession.objects.filter(pk=session.pk).update(
+            mock_exam=exam, exam_order=order, expires_at=exam.expires_at
+        )
+
+    logger.info(
+        'Blok imtihoni boshlandi: exam_id=%s fanlar=%s savol=%s user_id=%s',
+        exam.id, len(subjects), question_count, user.id,
+    )
+    return exam
+
+
+def exam_sessions(exam):
+    return (
+        exam.sessions
+        .select_related('subject')
+        .prefetch_related('result')
+        .order_by('exam_order', 'id')
+    )
+
+
+@transaction.atomic
+def finish_mock_exam(exam, *, auto=False):
+    """Imtihonni va uning barcha ochiq sessiyalarini yakunlaydi."""
+    exam_row = MockExam.objects.select_for_update().get(pk=exam.pk)
+    if exam_row.finished_at:
+        return exam_row
+
+    for session in exam_row.sessions.filter(finished_at__isnull=True):
+        finish_session(session, auto=auto)
+
+    now = timezone.now()
+    exam_row.finished_at = min(now, exam_row.expires_at) if auto else now
+    exam_row.auto_finished = auto
+    exam_row.save(update_fields=['finished_at', 'auto_finished', 'updated_at'])
+
+    exam.finished_at = exam_row.finished_at
+    exam.auto_finished = exam_row.auto_finished
+
+    logger.info(
+        'Blok imtihoni yakunlandi: exam_id=%s avtomatik=%s user_id=%s',
+        exam_row.id, auto, exam_row.user_id,
+    )
+    return exam_row
+
+
+def mock_exam_summary(exam) -> dict:
+    """Fanlar kesimidagi va umumiy natija.
+
+    Yakunlanmagan imtihonda ham chaqirsa bo'ladi — u holda faqat tugagan
+    fanlar hisobga kiradi.
+    """
+    subjects = []
+    totals = {'correct': 0, 'incorrect': 0, 'unanswered': 0, 'questions': 0}
+
+    for session in exam_sessions(exam):
+        result = getattr(session, 'result', None)
+        row = {
+            'session_id': session.id,
+            'order': session.exam_order,
+            'subject_id': session.subject_id,
+            'subject': session.subject,
+            'question_count': session.question_count,
+            'is_finished': session.is_finished,
+            'correct_count': result.correct_count if result else 0,
+            'incorrect_count': result.incorrect_count if result else 0,
+            'unanswered_count': result.unanswered_count if result else 0,
+            'total_score': result.total_score if result else 0,
+        }
+        subjects.append(row)
+
+        totals['questions'] += session.question_count
+        totals['correct'] += row['correct_count']
+        totals['incorrect'] += row['incorrect_count']
+        totals['unanswered'] += row['unanswered_count']
+
+    answered = totals['correct'] + totals['incorrect']
+    accuracy = round(totals['correct'] / answered * 100, 1) if answered else 0.0
+
+    return {
+        'subjects': subjects,
+        'total_questions': totals['questions'],
+        'correct_count': totals['correct'],
+        'incorrect_count': totals['incorrect'],
+        'unanswered_count': totals['unanswered'],
+        'total_score': totals['correct'],
+        'accuracy_percent': accuracy,
+    }
+
+
+def ensure_exam_not_expired(exam) -> bool:
+    """Muddati o'tgan imtihonni yopadi. `True` — shu chaqiruvda yopildi."""
+    if not exam.is_expired:
+        return False
+    finish_mock_exam(exam, auto=True)
+    exam.refresh_from_db()
+    return True
+
+
+def finish_expired_mock_exams(limit=200) -> int:
+    """Muddati o'tgan, lekin yakunlanmagan blok imtihonlari (davriy vazifa)."""
+    now = timezone.now()
+    expired = MockExam.objects.filter(
+        finished_at__isnull=True, expires_at__lte=now
+    ).order_by('expires_at')[:limit]
+
+    closed = 0
+    for exam in list(expired):
+        if finish_mock_exam(exam, auto=True).finished_at is not None:
+            closed += 1
+
+    if closed:
+        logger.info('Muddati tugagan blok imtihonlari yopildi: %s ta', closed)
+    return closed

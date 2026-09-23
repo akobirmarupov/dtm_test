@@ -16,6 +16,57 @@ MAX_TIER = QUESTION_COUNT_TIERS[-1]
 EXAM_SECONDS_PER_QUESTION = 90
 PRACTICE_MAX_SECONDS_PER_QUESTION = 600
 
+# DTM blok imtihoni: bir nechta fan ketma-ket, bitta umumiy taymer.
+MOCK_EXAM_MIN_SUBJECTS = 2
+MOCK_EXAM_MAX_SUBJECTS = 5
+MOCK_EXAM_DEFAULT_QUESTION_COUNT = 30
+
+
+class MockExam(BaseModel):
+    """DTM blok imtihoni: bir nechta fan ketma-ket, bitta umumiy muddat.
+
+    Har bir fan uchun alohida `TestSession` ochiladi — javob berish, sinxron
+    qilish, natija hisoblash hammasi mavjud kod bilan ishlaydi. `MockExam`
+    ularni bitta imtihonga bog'lab turadi va umumiy taymerni ushlaydi.
+    """
+
+    user = models.ForeignKey(
+        'account.User', on_delete=models.CASCADE, related_name='mock_exams'
+    )
+    time_limit_seconds = models.PositiveIntegerField('Umumiy vaqt (soniya)')
+    expires_at = models.DateTimeField('Tugash muddati')
+    finished_at = models.DateTimeField('Yakunlangan vaqti', null=True, blank=True)
+    auto_finished = models.BooleanField('Avtomatik yakunlangan', default=False)
+
+    class Meta:
+        verbose_name = 'Blok imtihoni'
+        verbose_name_plural = 'Blok imtihonlari'
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['user', '-created_at']),
+            models.Index(fields=['expires_at'], condition=models.Q(finished_at__isnull=True),
+                         name='idx_mock_exam_open_expiry'),
+        ]
+
+    def __str__(self):
+        return f'{self.user} - blok imtihoni #{self.pk}'
+
+    @property
+    def is_finished(self) -> bool:
+        return self.finished_at is not None
+
+    @property
+    def is_expired(self) -> bool:
+        if self.finished_at is not None:
+            return False
+        return timezone.now() >= self.expires_at
+
+    @property
+    def seconds_left(self) -> int:
+        if self.finished_at is not None:
+            return 0
+        return max(int((self.expires_at - timezone.now()).total_seconds()), 0)
+
 
 class TestSession(BaseModel):
     class Mode(models.TextChoices):
@@ -35,6 +86,14 @@ class TestSession(BaseModel):
     time_limit_seconds = models.PositiveIntegerField('Vaqt chegarasi (soniya)', null=True, blank=True)
     expires_at = models.DateTimeField('Tugash muddati', null=True, blank=True)
     auto_finished = models.BooleanField('Avtomatik yakunlangan', default=False)
+    mock_exam = models.ForeignKey(
+        MockExam, on_delete=models.CASCADE, related_name='sessions',
+        null=True, blank=True, verbose_name='Blok imtihoni',
+    )
+    exam_order = models.PositiveSmallIntegerField(
+        'Imtihondagi tartibi', default=0,
+        help_text='Blok imtihonida fanlar shu tartibda chiqadi.',
+    )
 
     class Meta:
         ordering = ['-created_at']
@@ -42,6 +101,7 @@ class TestSession(BaseModel):
             models.Index(fields=['user', '-created_at']),
             models.Index(fields=['expires_at'], condition=models.Q(finished_at__isnull=True),
                          name='idx_session_open_expiry'),
+            models.Index(fields=['mock_exam', 'exam_order']),
         ]
 
     def __str__(self):

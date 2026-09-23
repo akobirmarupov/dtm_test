@@ -4,7 +4,7 @@ import logging
 
 from celery import shared_task
 
-from testengine.services import finish_expired_sessions
+from testengine.services import finish_expired_mock_exams, finish_expired_sessions
 
 logger = logging.getLogger('testengine.tasks')
 
@@ -17,4 +17,8 @@ def finish_expired_sessions_task():
     (`ensure_not_expired`), lekin u umuman qaytib kelmasligi mumkin —
     shunda sessiya abadiy "ochiq" bo'lib qolardi va statistikani buzardi.
     """
-    return finish_expired_sessions()
+    closed_sessions = finish_expired_sessions()
+    # Blok imtihonining sessiyalari yopilgani bilan imtihonning o'zi ochiq
+    # qolib ketmasligi kerak.
+    closed_exams = finish_expired_mock_exams()
+    return {'sessions': closed_sessions, 'mock_exams': closed_exams}

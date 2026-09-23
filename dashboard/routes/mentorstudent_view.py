@@ -7,11 +7,15 @@ from rest_framework.generics import get_object_or_404
 from rest_framework.exceptions import NotFound
 from drf_spectacular.utils import extend_schema
 
+from billing.entitlements import entitlements_for
 from common.permissions import IsMentorOrAdmin, IsAdmin
 from common.models import Role
 
 from dashboard.models import MentorStudent
-from dashboard.routes.serializers import MentorStudentSerializer
+from dashboard.routes.serializers import (
+    MentorStudentCreateSerializer,
+    MentorStudentSerializer,
+)
 from rating.models import Rating, TopicRating, SubjectRating
 from rating.routes.serializers import RatingSerializer, TopicRatingSerializer, SubjectRatingSerializer
 
@@ -32,10 +36,29 @@ class MentorStudentListCreateAPIView(APIView):
         queryset = queryset.order_by('-assigned_at')
         return Response(MentorStudentSerializer(queryset, many=True).data, status=status.HTTP_200_OK)
 
-    @extend_schema(request=MentorStudentSerializer, responses={201: MentorStudentSerializer})
+    @extend_schema(request=MentorStudentCreateSerializer, responses={201: MentorStudentSerializer})
     def post(self, request):
-        serializer = MentorStudentSerializer(data=request.data)
+        serializer = MentorStudentCreateSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
+
+        # Mentor nazorati — tarif imkoniyati. Talabaning tarifida shu ptichka
+        # bo'lmasa, uni mentorga biriktirib bo'lmaydi.
+        student = serializer.validated_data['student']
+        if not entitlements_for(student).feature('mentor_support', False):
+            logger.info(
+                'MentorStudent rad etildi (tarifda yo\'q): student_id=%s by=%s',
+                student.id, request.user.id,
+            )
+            return Response(
+                {
+                    'detail': f"«{student.email}» tarifida mentor nazorati yo'q. "
+                              f"Avval mos tarifga o'tishi kerak.",
+                    'code': 'upgrade_required',
+                    'upgrade_required': True,
+                },
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
         link = serializer.save()
 
         logger.info(

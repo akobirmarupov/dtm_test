@@ -137,8 +137,18 @@ def update_streak_on_activity(user):
     return streak
 
 
-def use_streak_freeze(streak):
-    if streak.freezes_available > 0:
+def use_streak_freeze(streak, remaining=None):
+    """«Muz»ni ishlatadi.
+
+    `remaining` berilsa (tarifdagi oylik limitdan qolgan son), hisoblagich
+    aynan shu qiymatga tenglashtiriladi — chunki endi haqiqiy chegara
+    tarifda turadi, `freezes_available` esa uni ko'rsatib turuvchi oyna.
+    Berilmasa (cheksiz tarif) — eski xatti-harakat saqlanadi.
+    """
+    if remaining is not None:
+        streak.freezes_available = max(int(remaining), 0)
+        streak.save(update_fields=['freezes_available'])
+    elif streak.freezes_available > 0:
         streak.freezes_available -= 1
         streak.save(update_fields=['freezes_available'])
     return streak

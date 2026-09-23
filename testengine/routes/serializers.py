@@ -3,8 +3,12 @@ from rest_framework import serializers
 from testengine.models import (
     MAX_QUESTION_COUNT,
     MIN_QUESTION_COUNT,
+    MOCK_EXAM_DEFAULT_QUESTION_COUNT,
+    MOCK_EXAM_MAX_SUBJECTS,
+    MOCK_EXAM_MIN_SUBJECTS,
     QUESTION_COUNT_TIERS,
     Answer,
+    MockExam,
     TestResult,
     TestSession,
 )
@@ -546,3 +550,86 @@ class GuestResultSerializer(serializers.Serializer):
     detail = serializers.CharField(read_only=True)
     actions = serializers.ListField(read_only=True)
     guest_question_count = serializers.IntegerField(read_only=True)
+
+
+# ---------------------------------------------------------------------------
+# DTM blok imtihoni
+# ---------------------------------------------------------------------------
+class MockExamStartSerializer(serializers.Serializer):
+    """`POST /testengine/mock-exams/` so'rovi."""
+
+    subjects = serializers.PrimaryKeyRelatedField(
+        queryset=Subject.objects.all(), many=True,
+    )
+    question_count = serializers.IntegerField(
+        required=False, default=MOCK_EXAM_DEFAULT_QUESTION_COUNT,
+    )
+
+    def validate_subjects(self, value):
+        if not (MOCK_EXAM_MIN_SUBJECTS <= len(value) <= MOCK_EXAM_MAX_SUBJECTS):
+            raise serializers.ValidationError(
+                f"Blok imtihonida {MOCK_EXAM_MIN_SUBJECTS} tadan "
+                f"{MOCK_EXAM_MAX_SUBJECTS} tagacha fan bo'lishi kerak."
+            )
+        if len({subject.id for subject in value}) != len(value):
+            raise serializers.ValidationError("Fanlar takrorlanmasligi kerak.")
+        return value
+
+    def validate_question_count(self, value):
+        if value not in QUESTION_COUNT_TIERS:
+            raise serializers.ValidationError(
+                f"Har bir fandagi savollar soni quyidagilardan biri bo'lishi "
+                f"kerak: {list(QUESTION_COUNT_TIERS)}."
+            )
+        return value
+
+
+class MockExamSubjectSerializer(LanguageContextMixin, serializers.Serializer):
+    """Imtihon ichidagi bitta fan — sessiya va uning natijasi."""
+
+    session_id = serializers.IntegerField()
+    order = serializers.IntegerField()
+    subject = SubjectMinimalSerializer()
+    question_count = serializers.IntegerField()
+    is_finished = serializers.BooleanField()
+    correct_count = serializers.IntegerField()
+    incorrect_count = serializers.IntegerField()
+    unanswered_count = serializers.IntegerField()
+    total_score = serializers.IntegerField()
+
+
+class MockExamSerializer(LanguageContextMixin, serializers.ModelSerializer):
+    """Imtihon holati: taymer, fanlar va (tugagan bo'lsa) umumiy natija."""
+
+    seconds_left = serializers.IntegerField(read_only=True)
+    is_finished = serializers.BooleanField(read_only=True)
+    subjects = serializers.SerializerMethodField()
+    summary = serializers.SerializerMethodField()
+
+    class Meta:
+        model = MockExam
+        fields = [
+            'id', 'time_limit_seconds', 'expires_at', 'seconds_left',
+            'finished_at', 'is_finished', 'auto_finished', 'created_at',
+            'subjects', 'summary',
+        ]
+        read_only_fields = fields
+
+    def _summary(self, obj):
+        cached = getattr(obj, '_summary_cache', None)
+        if cached is None:
+            from testengine.services import mock_exam_summary
+            cached = mock_exam_summary(obj)
+            obj._summary_cache = cached
+        return cached
+
+    def get_subjects(self, obj) -> list:
+        return MockExamSubjectSerializer(
+            self._summary(obj)['subjects'], many=True, context=self.context
+        ).data
+
+    def get_summary(self, obj) -> dict:
+        summary = self._summary(obj)
+        return {
+            key: value for key, value in summary.items() if key != 'subjects'
+        }

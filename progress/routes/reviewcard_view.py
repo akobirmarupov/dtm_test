@@ -10,9 +10,13 @@ from django_filters.rest_framework import DjangoFilterBackend
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiParameter, extend_schema
 
+from billing.entitlements import entitlements_for_request
 from common.permissions import IsStudent, IsOwner
 from common.pagination import StandardResultsPagination
 from common.throttles import BurstUserRateThrottle, SustainedUserRateThrottle
+from common.usage import (
+    Feature, consume_if_limited, daily_limit_access, limit_payload,
+)
 
 from progress.models import ReviewCard
 from progress.routes.serializers import ReviewCardSerializer, ReviewCardSubmitSerializer
@@ -36,6 +40,23 @@ REVIEW_CARD_FILTER_PARAMETERS = [
     OpenApiParameter('next_review_date_after', OpenApiTypes.DATE),
     OpenApiParameter('next_review_date_before', OpenApiTypes.DATE),
 ]
+
+
+def review_card_access(request) -> dict:
+    """Takrorlash kartalari bo'yicha kunlik limit holati."""
+    entitlements = entitlements_for_request(request)
+    return daily_limit_access(
+        request.user, Feature.REVIEW_CARD,
+        entitlements.review_cards_daily_limit,
+        closed_detail=(
+            "Takrorlash kartalari sizning tarifingizda mavjud emas."
+        ),
+        reached_detail=(
+            "Bugun {limit} ta kartani takrorladingiz — kunlik limitingiz "
+            "shuncha. Ertaga 00:00 dan keyin yangilanadi."
+        ),
+        code='review_card_limit_reached',
+    )
 
 
 class  ReviewCardListAPIView(APIView):
@@ -68,24 +89,42 @@ class ReviewCardTodayAPIView(APIView):
         cache_key = TODAY_CACHE_KEY.format(user_id=request.user.id)
         cached_data = cache.get(cache_key)
 
-        if cached_data is not None:
+        if cached_data is None:
+            today = timezone.now().date()
+            queryset = (ReviewCard.objects.filter(user=request.user, next_review_date__lte=today)
+                        .select_related('question', 'question__topic', 'question__topic__subject'))
+
+            serializer = ReviewCardSerializer(queryset, many=True)
+            cached_data = {
+                'count': queryset.count(),
+                'results': serializer.data
+            }
+
+            cache.set(cache_key, cached_data, TODAY_CACHE_TTL)
+            logger.debug('ReviewCard today: cache miss, saved user_id=%s', request.user.id)
+        else:
             logger.debug('ReviewCard today: cache hit user_id=%s', request.user.id)
-            return Response(cached_data, status=status.HTTP_200_OK)
 
-        today = timezone.now().date()
-        queryset = (ReviewCard.objects.filter(user=request.user, next_review_date__lte=today)
-                    .select_related('question', 'question__topic', 'question__topic__subject'))
+        # Limit keshlanmaydi: u kun davomida o'zgaradi va tarif ham
+        # o'rtada almashishi mumkin.
+        access = review_card_access(request)
+        cards = cached_data['results']
+        if access['limit'] is not None:
+            cards = cards[:access['remaining']]
 
-        serializer = ReviewCardSerializer(queryset, many=True)
-        response_data = {
-            'count': queryset.count(),
-            'results': serializer.data
-        }
-
-        cache.set(cache_key, response_data, TODAY_CACHE_TTL)
-        logger.debug('ReviewCard today: cache miss, saved user_id=%s', request.user.id)
-
-        return Response(response_data, status=status.HTTP_200_OK)
+        return Response(
+            {
+                'count': len(cards),
+                'results': cards,
+                'due_total': cached_data['count'],
+                'limit': access['limit'],
+                'used_today': access['used'],
+                'remaining_today': access['remaining'],
+                'upgrade_required': access['upgrade_required'],
+                'detail': access['detail'],
+            },
+            status=status.HTTP_200_OK,
+        )
 
 
 class ReviewCardSubmitAPIview(APIView):
@@ -97,6 +136,14 @@ class ReviewCardSubmitAPIview(APIView):
         card = get_object_or_404(ReviewCard, pk=pk)
         self.check_object_permissions(request, card)
 
+        access = review_card_access(request)
+        if not access['allowed']:
+            logger.info(
+                'Takrorlash limiti: user_id=%s limit=%s used=%s',
+                request.user.id, access['limit'], access['used'],
+            )
+            return Response(limit_payload(access), status=status.HTTP_403_FORBIDDEN)
+
         serializer = ReviewCardSubmitSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
@@ -106,6 +153,7 @@ class ReviewCardSubmitAPIview(APIView):
             response_time=serializer.validated_data['response_time'],
         )
 
+        consume_if_limited(request.user, Feature.REVIEW_CARD, access['limit'])
         cache.delete(TODAY_CACHE_KEY.format(user_id=request.user.id))
 
         logger.info(

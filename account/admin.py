@@ -27,7 +27,8 @@ class UserAdmin(BaseUserAdmin, ModelAdmin):
     list_filter = ("role", "language", "is_staff", "is_active")
     search_fields = ("email", "full_name", "google_id", "apple_id", "phone_number")
     ordering = ("-created_at",)
-    readonly_fields = ("google_id", "apple_id", "created_at", "updated_at")
+    readonly_fields = ("google_id", "apple_id", "created_at", "updated_at",
+                       "blocked_at", "blocked_by")
 
     fieldsets = (
         (None, {"fields": ("email", "password")}),
@@ -45,6 +46,14 @@ class UserAdmin(BaseUserAdmin, ModelAdmin):
         (
             "Rozilik",
             {"fields": ("consent_share_with_universities", "consent_updated_at")},
+        ),
+        (
+            "Bloklash",
+            {
+                "fields": ("blocked_at", "blocked_by", "block_reason"),
+                "description": "Bloklash uchun quyidagi «Faol» belgisini olib "
+                               "tashlang — bloklangan foydalanuvchi API'ga kira olmaydi.",
+            },
         ),
         (
             "Ruxsatlar",

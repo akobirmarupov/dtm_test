@@ -19,6 +19,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from billing.entitlements import entitlements_for_request
 from billing.filters import PaymentFilter
 from billing.models import Payment, Plan
 from billing.routes.serializers import (
@@ -331,14 +332,28 @@ class PaymentInfoAPIView(APIView):
 
     @extend_schema(responses={200: PaymentInfoSerializer}, tags=['Payment'])
     def get(self, request):
+        # Prioritet qo'llab-quvvatlash — tashkiliy va'da: kod hech narsani
+        # tezlashtirmaydi, lekin foydalanuvchi navbatsiz javob olishini
+        # bilishi uchun javobda ko'rsatiladi.
+        priority = bool(
+            entitlements_for_request(request).feature('priority_support', False)
+        )
+        message = (
+            "Obunani faollashtirmoqchi bo'lsangiz, tarifni tanlab "
+            "\"Ariza yuborish\" tugmasini bosing. So'ng adminlarimiz "
+            "bilan Telegram orqali bog'lanib to'lovni amalga oshiring — "
+            "admin tasdiqlagach obuna faollashadi."
+        )
+        if priority:
+            message += (" Sizning tarifingizda prioritet qo'llab-quvvatlash bor — "
+                        "arizangiz navbatsiz ko'rib chiqiladi.")
+
         return Response(
             {
-                "message": "Obunani faollashtirmoqchi bo'lsangiz, tarifni tanlab "
-                           "\"Ariza yuborish\" tugmasini bosing. So'ng adminlarimiz "
-                           "bilan Telegram orqali bog'lanib to'lovni amalga oshiring — "
-                           "admin tasdiqlagach obuna faollashadi.",
+                "message": message,
                 "admin_telegram": admin_link(),
                 "contact": contact_payload(),
+                "priority_support": priority,
             },
             status=status.HTTP_200_OK,
         )

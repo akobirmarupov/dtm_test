@@ -34,7 +34,16 @@ class User(AbstractBaseUser, PermissionsMixin, BaseModel):
     xp_total = models.PositiveIntegerField(default=0)
     consent_share_with_universities = models.BooleanField(default=False)
     consent_updated_at = models.DateTimeField(null=True, blank=True)
-    is_active = models.BooleanField(default=True)
+    # `is_active=False` — bloklangan foydalanuvchi. JWT autentifikatsiyasi
+    # bunday foydalanuvchini o'tkazmaydi, shuning uchun alohida "blocked"
+    # maydoni kerak emas; quyidagilar esa KIM va NEGA bloklaganini saqlaydi.
+    is_active = models.BooleanField('Faol', default=True)
+    blocked_at = models.DateTimeField('Bloklangan vaqti', null=True, blank=True)
+    blocked_by = models.ForeignKey(
+        'self', on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='blocked_users', verbose_name='Kim bloklagan',
+    )
+    block_reason = models.CharField('Bloklash sababi', max_length=255, blank=True)
     is_staff = models.BooleanField(default=False)
 
     objects = UserManager()

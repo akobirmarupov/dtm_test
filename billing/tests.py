@@ -354,3 +354,122 @@ class SubscriptionExpiryTests(APITestCase):
         )
 
         self.assertEqual(expire_due_subscriptions(), 0)
+
+
+class PlanFeatureCatalogTests(APITestCase):
+    """Admin panel ptichkalarni backenddan oladi — frontendda qattiq yozilmaydi."""
+
+    def setUp(self):
+        cache.clear()
+        self.admin = make_user('catalog-admin@example.com', role=Role.ADMIN)
+        self.student = make_user('catalog-student@example.com')
+
+    def test_only_admin_sees_the_catalog(self):
+        self.client.force_authenticate(self.student)
+        self.assertEqual(self.client.get('/billing/plan/features/').status_code, 403)
+
+    def test_catalog_lists_groups_and_features(self):
+        self.client.force_authenticate(self.admin)
+        response = self.client.get('/billing/plan/features/')
+
+        self.assertEqual(response.status_code, 200)
+        keys = {item['key'] for item in response.data['features']}
+        self.assertIn('daily_topic_limit', keys)
+        self.assertIn('mistake_test_daily_limit', keys)
+        self.assertTrue(response.data['groups'])
+
+        by_key = {item['key']: item for item in response.data['features']}
+        # Raqamli maydon bo'sh qoldirilsa cheksiz degani — frontend shuni ko'rsatadi.
+        self.assertTrue(by_key['daily_topic_limit']['unlimited_when_empty'])
+        # Savol soni erkin raqam emas, tayyor to'plamlardan tanlanadi.
+        self.assertIn(20, by_key['max_question_count']['choices'])
+        # Hali yozilmagan imkoniyat ochiq aytiladi.
+        self.assertFalse(by_key['ai_tutor']['enforced'])
+
+    def test_catalog_speaks_the_requested_language(self):
+        self.client.force_authenticate(self.admin)
+        response = self.client.get('/billing/plan/features/?lang=ru')
+
+        by_key = {item['key']: item for item in response.data['features']}
+        self.assertEqual(by_key['daily_topic_limit']['label'], 'Дневной лимит тем')
+
+
+class AdminCreatesPlanFromFrontendTests(APITestCase):
+    """Tarif nomi ham, cheklovlari ham API orqali kiradi — kodda tarif yo'q."""
+
+    def setUp(self):
+        cache.clear()
+        self.admin = make_user('plan-admin@example.com', role=Role.ADMIN)
+        self.client.force_authenticate(self.admin)
+
+    def payload(self, **overrides):
+        data = {
+            'name': 'Premium Max',
+            'price': '99000',
+            'duration_days': 30,
+            'is_pro': True,
+            'daily_topic_limit': None,
+            'max_question_count': 60,
+            'can_choose_question_count': True,
+            'can_use_exam_mode': True,
+            'can_view_explanations': True,
+            'explanation_limit_per_day': None,
+            'mistake_test_daily_limit': None,
+            'review_cards_daily_limit': None,
+            'can_view_analytics': True,
+            'history_days': None,
+            'streak_freezes_per_month': None,
+            'features': {'ai_tutor': True, 'mock_exam': True},
+        }
+        data.update(overrides)
+        return data
+
+    def test_admin_can_create_a_fourth_plan_with_its_own_name(self):
+        response = self.client.post('/billing/plan/', self.payload(), format='json')
+
+        self.assertEqual(response.status_code, 201, response.data)
+        self.assertEqual(response.data['name'], 'Premium Max')
+        self.assertIsNone(response.data['daily_topic_limit'])
+        self.assertTrue(response.data['can_use_exam_mode'])
+        self.assertEqual(response.data['features']['ai_tutor'], True)
+
+    def test_limits_survive_and_are_editable(self):
+        created = self.client.post(
+            '/billing/plan/',
+            self.payload(name='Oddiy', price='0', is_pro=False, daily_topic_limit=5,
+                         mistake_test_daily_limit=0, can_view_explanations=False,
+                         explanation_limit_per_day=None),
+            format='json',
+        )
+        plan_id = created.data['id']
+
+        updated = self.client.patch(
+            f'/billing/plan/{plan_id}/', {'daily_topic_limit': 8}, format='json'
+        )
+
+        self.assertEqual(updated.status_code, 200, updated.data)
+        self.assertEqual(updated.data['daily_topic_limit'], 8)
+        self.assertEqual(updated.data['mistake_test_daily_limit'], 0)
+
+    def test_question_count_outside_the_tiers_is_rejected(self):
+        response = self.client.post(
+            '/billing/plan/', self.payload(max_question_count=33), format='json'
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('max_question_count', response.data)
+
+    def test_explanation_limit_without_the_checkbox_is_rejected(self):
+        response = self.client.post(
+            '/billing/plan/',
+            self.payload(can_view_explanations=False, explanation_limit_per_day=5),
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('explanation_limit_per_day', response.data)
+
+    def test_student_cannot_create_a_plan(self):
+        self.client.force_authenticate(make_user('not-admin@example.com'))
+        response = self.client.post('/billing/plan/', self.payload(), format='json')
+        self.assertEqual(response.status_code, 403)

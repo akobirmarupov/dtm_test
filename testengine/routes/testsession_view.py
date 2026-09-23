@@ -29,7 +29,9 @@ from common.i18n import resolve_language
 from common.pagination import StandardResultsPagination
 from common.throttles import BurstUserRateThrottle
 from testengine.filters import TestSessionFilter
-from testengine.models import DEFAULT_QUESTION_COUNT, Answer, TestResult, TestSession
+from testengine.models import (
+    DEFAULT_QUESTION_COUNT, MIN_TIER, Answer, TestResult, TestSession,
+)
 from testengine.routes.serializers import (
     AnswerOptionSerializer,
     BulkAnswerSerializer,SessionFinishResponseSerializer,SessionProgressSerializer,
@@ -154,8 +156,23 @@ class TestSessionListCreateAPIView(SessionAccessMixin, APIView):
         data = serializer.validated_data
 
         entitlements = entitlements_for_request(request)
+
+        if data.get('mode') == TestSession.Mode.EXAM and not entitlements.can_use_exam_mode:
+            return Response(
+                {
+                    "detail": "Imtihon rejimi sizning tarifingizda mavjud emas. "
+                              "«O'rganish» rejimida test ishlashingiz mumkin.",
+                    "code": "exam_mode_unavailable",
+                    "upgrade_required": True,
+                },
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
         requested = data.get('question_count') or DEFAULT_QUESTION_COUNT
-        if requested > entitlements.max_question_count:
+        if not entitlements.can_choose_question_count:
+            # Tarifda savol sonini tanlash yopiq — har doim eng kichik to'plam.
+            requested = min(MIN_TIER, entitlements.max_question_count)
+        elif requested > entitlements.max_question_count:
             return Response(
                 {
                     "detail": f"Sizning tarifingizda bir testda ko'pi bilan "

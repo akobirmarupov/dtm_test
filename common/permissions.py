@@ -102,6 +102,20 @@ class CanViewExplanations(_EntitlementPermission):
         return self.entitlements(request).can_view_explanations
 
 
+class CanViewAnalytics(_EntitlementPermission):
+    """Zaif mavzular va batafsil tahlilni ko'rish huquqi.
+
+    Umumiy ball, daraja va leaderboard bundan tashqarida — ular hamma uchun
+    ochiq qoladi, aks holda bepul foydalanuvchida ilovaga qaytish sababi
+    qolmaydi.
+    """
+
+    message = "Batafsil tahlil sizning tarifingizda mavjud emas."
+
+    def has_permission(self, request, view):
+        return self.entitlements(request).can_view_analytics
+
+
 class HasFeature(_EntitlementPermission):
     """Nomlangan flag bo'yicha ruxsat (`Plan.features` JSON).
 

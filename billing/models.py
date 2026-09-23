@@ -16,14 +16,32 @@ class Plan(BaseModel):
     is_active = models.BooleanField('Faol', default=True)
     code = models.SlugField('Tizim kodi', max_length=32, blank=True,
         help_text="Kodda murojaat qilish uchun barqaror kalit: free, pro_basic, pro_full.",)
-    is_pro = models.BooleanField('Pro tarif', default=False,
-        help_text="Pro tariflarda kunlik mavzu limiti qo'llanilmaydi.",)
+    is_pro = models.BooleanField('Pullik tarif', default=False,
+        help_text="Faqat belgi: tarif pullik ekanini bildiradi. Cheklovlar "
+                  "quyidagi maydonlardan olinadi, bu ptichkadan emas.",)
     daily_topic_limit = models.PositiveSmallIntegerField('Kunlik mavzu limiti', null=True, blank=True,
         help_text="Bir kunda nechta TURLI mavzuda test ishlash mumkin. ""Bo'sh qoldirilsa — cheklovsiz.",)
     max_question_count = models.PositiveSmallIntegerField('Bir testdagi maksimal savol', default=60,)
+    can_choose_question_count = models.BooleanField("Savol sonini o'zi tanlaydi", default=True,
+        help_text="O'chirilsa test har doim eng kichik to'plam bilan boshlanadi.",)
+    can_use_exam_mode = models.BooleanField('Imtihon rejimi (vaqt chegarasi bilan)', default=True,
+        help_text="O'chirilsa faqat «O'rganish» rejimi ochiq bo'ladi.",)
     can_view_explanations = models.BooleanField('Yechim izohlarini ko\'radi', default=False,)
     explanation_limit_per_day = models.PositiveSmallIntegerField('Kunlik izoh limiti', null=True, blank=True,
         help_text="Kuniga nechta testning izohini ochish mumkin. ""Bo'sh qoldirilsa — cheklovsiz.",)
+    mistake_test_daily_limit = models.PositiveSmallIntegerField('Xatolardan test tuzish (kuniga)',
+        null=True, blank=True,
+        help_text="Bo'sh — cheksiz, 0 — faqat xatolar ro'yxatini ko'radi.",)
+    review_cards_daily_limit = models.PositiveSmallIntegerField('Takrorlash kartalari (kuniga)',
+        null=True, blank=True,
+        help_text="Bo'sh — cheksiz, 0 — takrorlash yopiq.",)
+    can_view_analytics = models.BooleanField('Zaif mavzular va batafsil tahlil', default=True,
+        help_text="O'chirilsa faqat umumiy ball va daraja ko'rinadi.",)
+    history_days = models.PositiveSmallIntegerField('Natijalar tarixi (kun)', null=True, blank=True,
+        help_text="Necha kunlik natija ko'rinadi. Bo'sh qoldirilsa — butun tarix.",)
+    streak_freezes_per_month = models.PositiveSmallIntegerField('Streak muzlatish (oyiga)',
+        null=True, blank=True, default=1,
+        help_text="Bo'sh — cheksiz, 0 — muzlatish yo'q.",)
     features = models.JSONField("Qo'shimcha imkoniyatlar", default=dict, blank=True,
         help_text="Kelajakdagi flaglar uchun erkin JSON. Masalan: "'{"ai_tutor": true, "mock_exam": false}',)
 

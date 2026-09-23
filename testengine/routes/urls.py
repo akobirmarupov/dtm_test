@@ -8,12 +8,18 @@ from testengine.routes.answer_view import (
 from testengine.routes.testresult_view import (
     MyTestResultsAPIView,
     TestResultDetailAPIView,
+    TestResultExportAPIView,
     TestResultListAPIView,
 )
 from testengine.routes.guest_view import (
     GuestStartTestAPIView,
     GuestSubmitTestAPIView,
     GuestTopicsAPIView,
+)
+from testengine.routes.mockexam_view import (
+    MockExamDetailAPIView,
+    MockExamFinishAPIView,
+    MockExamListCreateAPIView,
 )
 from testengine.routes.mistake_view import (
     MistakeListAPIView,
@@ -51,6 +57,11 @@ urlpatterns = [
         name="topic-start-test",
     ),
     path("my-limits/", MyTestLimitsAPIView.as_view(), name="my-limits"),
+
+    # --- DTM blok imtihoni (bir necha fan, yagona taymer) -----------------
+    path("mock-exams/", MockExamListCreateAPIView.as_view(), name="mock-exam-list-create"),
+    path("mock-exams/<int:pk>/", MockExamDetailAPIView.as_view(), name="mock-exam-detail"),
+    path("mock-exams/<int:pk>/finish/", MockExamFinishAPIView.as_view(), name="mock-exam-finish"),
 
     # --- Xatolar banki ----------------------------------------------------
     path("mistakes/", MistakeListAPIView.as_view(), name="mistake-list"),
@@ -102,5 +113,6 @@ urlpatterns = [
     # Natijalar
     path("results/", TestResultListAPIView.as_view(), name="result-list"),
     path("results/my-results/", MyTestResultsAPIView.as_view(), name="my-results"),
+    path("results/export/", TestResultExportAPIView.as_view(), name="result-export"),
     path("results/<int:pk>/", TestResultDetailAPIView.as_view(), name="result-detail"),
 ]
