@@ -8,7 +8,7 @@ from drf_spectacular.utils import OpenApiParameter, extend_schema
 from rest_framework import serializers, status
 from rest_framework.exceptions import NotFound
 from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
@@ -72,7 +72,7 @@ class SubjectListCreateAPIView(LanguageAwareAPIView):
     def get_permissions(self):
         if self.request.method == "POST":
             return [IsAuthenticated(), IsMentorOrAdmin()]
-        return [IsAuthenticated()]
+        return [AllowAny()]
 
     @extend_schema(parameters=[LANGUAGE_PARAMETER],responses=SubjectSerializer(many=True),tags=['Catalog'])
     def get(self, request):
@@ -147,7 +147,7 @@ class SubjectDetailAPIView(LanguageAwareAPIView):
 
     def get_permissions(self):
         if self.request.method in ("GET", "HEAD", "OPTIONS"):
-            return [IsAuthenticated()]
+            return [AllowAny()]
         return [IsAuthenticated(), IsMentorOrAdmin()]
 
     def get_object(self, pk):
@@ -231,7 +231,7 @@ class GradeListCreateAPIView(LanguageAwareAPIView):
     def get_permissions(self):
         if self.request.method == "POST":
             return [IsAuthenticated(), IsMentorOrAdmin()]
-        return [IsAuthenticated()]
+        return [AllowAny()]
 
     @extend_schema(
         parameters=[LANGUAGE_PARAMETER],
@@ -308,7 +308,7 @@ class GradeDetailAPIView(LanguageAwareAPIView):
 
     def get_permissions(self):
         if self.request.method in ("GET", "HEAD", "OPTIONS"):
-            return [IsAuthenticated()]
+            return [AllowAny()]
         return [IsAuthenticated(), IsMentorOrAdmin()]
 
     def get_object(self, pk):
@@ -394,7 +394,7 @@ class TopicListCreateAPIView(LanguageAwareAPIView):
     def get_permissions(self):
         if self.request.method == "POST":
             return [IsAuthenticated(), IsMentorOrAdmin()]
-        return [IsAuthenticated()]
+        return [AllowAny()]
 
 
     @extend_schema(parameters=[LANGUAGE_PARAMETER],responses=TopicSerializer(many=True),tags=['Catalog'])
@@ -458,7 +458,7 @@ class TopicDetailAPIView(LanguageAwareAPIView):
 
     def get_permissions(self):
         if self.request.method in ("GET", "HEAD", "OPTIONS"):
-            return [IsAuthenticated()]
+            return [AllowAny()]
         return [IsAuthenticated(), IsMentorOrAdmin()]
 
     def get_object(self, pk):
@@ -542,7 +542,7 @@ class QuestionListCreateAPIView(LanguageAwareAPIView):
     def get_permissions(self):
         if self.request.method == "POST":
             return [IsAuthenticated(), IsMentorOrAdmin()]
-        return [IsAuthenticated()]
+        return [AllowAny()]
 
     def select_serializer(self, user):
         if getattr(user, 'role', None) in (Role.MENTOR, Role.ADMIN):
@@ -629,7 +629,7 @@ class QuestionDetailAPIView(LanguageAwareAPIView):
 
     def get_permissions(self):
         if self.request.method in ("GET", "HEAD", "OPTIONS"):
-            return [IsAuthenticated()]
+            return [AllowAny()]
         return [IsAuthenticated(), IsMentorOrAdmin()]
 
     def select_serializer(self, user):

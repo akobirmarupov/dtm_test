@@ -133,6 +133,11 @@ class GoogleAuthView(APIView):
                 {"detail": "Google tokeni noto'g'ri yoki eskirgan"},
                 status=status.HTTP_400_BAD_REQUEST,
             )
+        except Exception as e:
+            return Response(
+                {"detail": "Google bilan ulanishda tarmoq xatoligi yuz berdi. Iltimos, qayta urinib ko'ring."},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
 
         language = resolve_language(request)
 

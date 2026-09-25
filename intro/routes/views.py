@@ -77,10 +77,6 @@ class IntroStartAPIView(GuestOnlyMixin, APIView):
                     f"to'plam chiqadi.",
     )
     def get(self, request):
-        rejected = self.reject_authenticated(request)
-        if rejected is not None:
-            return rejected
-
         questions = list(
             IntroQuestion.objects.filter(is_active=True).order_by('?')[:INTRO_QUESTION_COUNT]
         )
@@ -123,10 +119,6 @@ class IntroSubmitAPIView(GuestOnlyMixin, APIView):
                     "to'g'ri javob berilgani, izohlar va ro'yxatdan o'tish taklifi.",
     )
     def post(self, request):
-        rejected = self.reject_authenticated(request)
-        if rejected is not None:
-            return rejected
-
         serializer = IntroSubmitSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         data = serializer.validated_data

@@ -58,3 +58,28 @@ class DailyFeatureUsage(BaseModel):
 
     def __str__(self):
         return f'{self.user} - {self.get_feature_display()} ({self.date}): {self.count}'
+
+
+class Feedback(BaseModel):
+    class Type(models.TextChoices):
+        FEEDBACK = 'feedback', 'Fikr / Taklif'
+        BUG = 'bug', 'Muammo / Xatolik'
+        FEATURE = 'feature', 'Yangi imkoniyat'
+
+    user = models.ForeignKey(
+        'account.User', on_delete=models.CASCADE, null=True, blank=True, related_name='feedbacks'
+    )
+    type = models.CharField('Turi', max_length=20, choices=Type.choices, default=Type.FEEDBACK)
+    rating = models.PositiveSmallIntegerField('Baho (1-5)', default=5)
+    title = models.CharField('Mavzu / Bo\'lim', max_length=255, blank=True)
+    message = models.TextField('Xabar / Izoh')
+
+    class Meta:
+        verbose_name = 'Fikr va taklif'
+        verbose_name_plural = 'Fikr va takliflar'
+        ordering = ['-created_at']
+
+    def __str__(self):
+        user_str = str(self.user) if self.user else 'Anonim'
+        return f"{user_str} ({self.rating}/5): {self.title or self.message[:30]}"
+

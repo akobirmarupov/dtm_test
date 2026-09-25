@@ -146,16 +146,31 @@ class GuestSubmitTestAPIView(APIView):
             if item['question'] in allowed_ids and item.get('selected_option')
         }
 
+        questions = Question.objects.filter(id__in=allowed_ids)
+        correct_map = {q.id: q.correct_option for q in questions}
+
+        correct_count = 0
+        for item in answers:
+            q_id = item.get('question')
+            sel = item.get('selected_option')
+            if q_id in correct_map and sel and sel == correct_map[q_id]:
+                correct_count += 1
+
+        total = len(allowed_ids)
+        score_percent = round((correct_count / total * 100)) if total > 0 else 0
+
         logger.info(
-            'Guest testi yakunlandi: savollar=%s javoblar=%s',
-            len(allowed_ids), len(answered),
+            'Guest testi yakunlandi: savollar=%s togri=%s foiz=%s%%',
+            total, correct_count, score_percent,
         )
-        return Response(
-            registration_prompt(
-                answered_count=len(answered),
-                total_questions=len(allowed_ids),
-            )
+
+        res = registration_prompt(
+            answered_count=len(answered),
+            total_questions=total,
         )
+        res['correct_count'] = correct_count
+        res['score_percent'] = score_percent
+        return Response(res)
 
 
 class GuestTopicsAPIView(APIView):

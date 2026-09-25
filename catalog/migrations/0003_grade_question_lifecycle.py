@@ -100,7 +100,7 @@ class Migration(migrations.Migration):
         # ("cannot CREATE INDEX ... because it has pending trigger events").
         # Triggerlarni shu yerda majburan yopamiz.
         migrations.RunSQL(
-            'SET CONSTRAINTS ALL IMMEDIATE',
+            "DO $$ BEGIN PERFORM 1; END $$; SET CONSTRAINTS ALL IMMEDIATE;" if "postgresql" in settings.DATABASES["default"]["ENGINE"] else "",
             reverse_sql=migrations.RunSQL.noop,
         ),
         migrations.AlterField(

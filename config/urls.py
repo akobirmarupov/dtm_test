@@ -15,6 +15,8 @@ from config.views import GoogleTestView
 SCHEMA_PERMISSIONS = [permissions.AllowAny] if settings.DEBUG else [permissions.IsAdminUser]
 
 
+from common.views import FeedbackCreateView
+
 urlpatterns = [
     path('admin/', admin.site.urls),
 
@@ -27,6 +29,7 @@ urlpatterns = [
         url_name='schema', permission_classes=SCHEMA_PERMISSIONS), name='schema-redoc'),
 
     path("api/", include("account.urls")),
+    path("api/feedback/", FeedbackCreateView.as_view(), name="feedback-create"),
     path("catalog/", include("catalog.routes.urls")),
     path("intro/", include("intro.routes.urls")),
     path("testengine/", include("testengine.routes.urls")),
